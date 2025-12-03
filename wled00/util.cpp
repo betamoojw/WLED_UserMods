@@ -1263,7 +1263,7 @@ int8_t validateDeviceKey()
     File file = WLED_FS.open(DEVICE_KEY_FILE, FILE_READ);
     if (!file)
     {
-      DEBUG_PRINTLN(GOGAB_FAIL);
+      DEBUG_PRINTLN("Failed to open device key file!");
       return -2; // file open error
     }
     else
@@ -1275,29 +1275,29 @@ int8_t validateDeviceKey()
       String content = String(buf);
       delete[] buf;
       file.close();
-      DEBUG_PRINTLN(GOGAB_OK);
+      DEBUG_PRINTLN("Device key file read successfully.");
 
       String deviceKey = getDeviceKey();
-      DEBUG_PRINT(F(DEV_KEY_DEBUG_NAME "Computed device key: "));
+      DEBUG_PRINT(F( "Computed device key: "));
       DEBUG_PRINTLN(deviceKey);
-      DEBUG_PRINT(F(DEV_KEY_DEBUG_NAME "Stored device key:   "));
+      DEBUG_PRINT(F("Stored device key:   "));
       DEBUG_PRINTLN(content);
 
       if (content.equals(deviceKey))
       {
-        DEBUG_PRINTLN(F(DEV_KEY_DEBUG_NAME "Device key is valid."));
+        DEBUG_PRINTLN(F("Device key is valid."));
         return 0; // valid
       }
       else
       {
-        DEBUG_PRINTLN(F(DEV_KEY_DEBUG_NAME "Device key is INVALID!"));
+        DEBUG_PRINTLN(F("Device key is INVALID!"));
         return -3; // invalid
       }
     }
   }
   else
   {
-    DEBUG_PRINTLN(F(DEV_KEY_DEBUG_NAME "Device key file not found."));
+    DEBUG_PRINTLN(F("Device key file not found."));
     return -1; // file not found
   }
 }
