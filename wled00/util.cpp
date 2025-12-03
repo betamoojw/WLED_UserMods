@@ -1241,8 +1241,11 @@ String getDeviceKey() {
   // Second hash: SHA1 of the first hash
   String secondHash = computeSHA1(firstHash);
 
-  // Concatenate first hash + last 4 chars of second hash
-  cachedDeviceKey = firstHash + secondHash.substring(34);
+  // // Concatenate first hash + last 4 chars of second hash
+  // cachedDeviceKey = firstHash + secondHash.substring(34);
+
+  // Concatenate first hash + last 2 chars of second hash
+  cachedDeviceKey = firstHash + secondHash.substring(38);
 
   return cachedDeviceKey;
 }
