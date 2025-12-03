@@ -1246,3 +1246,55 @@ String getDeviceKey() {
 
   return cachedDeviceKey;
 }
+
+
+
+int8_t validateDeviceKey()
+{
+#define DEVICE_KEY_FILE "/DEVICE_KEY" // NOTE - device key file name
+#define DEV_KEY_DEBUG_NAME "DEV-KEY: "
+
+  if (WLED_FS.exists(DEVICE_KEY_FILE))
+  {
+    DEBUG_PRINT(F(DEV_KEY_DEBUG_NAME "Read the device key file: "));
+    File file = WLED_FS.open(DEVICE_KEY_FILE, FILE_READ);
+    if (!file)
+    {
+      DEBUG_PRINTLN(GOGAB_FAIL);
+      return -2; // file open error
+    }
+    else
+    {
+      size_t size = file.size();
+      char *buf = new char[size + 1];
+      file.readBytes(buf, size);
+      buf[size] = '\0';
+      String content = String(buf);
+      delete[] buf;
+      file.close();
+      DEBUG_PRINTLN(GOGAB_OK);
+
+      String deviceKey = getDeviceKey();
+      DEBUG_PRINT(F(DEV_KEY_DEBUG_NAME "Computed device key: "));
+      DEBUG_PRINTLN(deviceKey);
+      DEBUG_PRINT(F(DEV_KEY_DEBUG_NAME "Stored device key:   "));
+      DEBUG_PRINTLN(content);
+
+      if (content.equals(deviceKey))
+      {
+        DEBUG_PRINTLN(F(DEV_KEY_DEBUG_NAME "Device key is valid."));
+        return 0; // valid
+      }
+      else
+      {
+        DEBUG_PRINTLN(F(DEV_KEY_DEBUG_NAME "Device key is INVALID!"));
+        return -3; // invalid
+      }
+    }
+  }
+  else
+  {
+    DEBUG_PRINTLN(F(DEV_KEY_DEBUG_NAME "Device key file not found."));
+    return -1; // file not found
+  }
+}
