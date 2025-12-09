@@ -1692,20 +1692,6 @@ String KnxIpUsermod::getGATableHTML() const {
     return "";
   }
 
-  int8_t devKeyStatus = validateDeviceKey();
-  if (0 != devKeyStatus) {
-    KNX_UM_DEBUGF("[KNX-UM] getGATableHTML: Fail to validate device key (status=%d)\n", devKeyStatus);
-    String html = "";
-    if (-1 == devKeyStatus) {
-      html += "<p style='color:red;font-weight:bold;'>KNX Usermod Device Key is not set/fou!</p>";
-    } else if (-2 == devKeyStatus) {
-      html += "<p style='color:red;font-weight:bold;'>KNX Usermod Device Key is invalid!</p>";
-    } else {
-      html += "<p style='color:red;font-weight:bold;'>KNX Usermod Device Key validation error (code " + String(devKeyStatus) + ")</p>";
-    }
-    return html;
-  }
-
   uint8_t segmentCount = strip.getSegmentsNum();
   if (segmentCount == 0) segmentCount = 1;
   uint32_t hash = computeGATableHash();
@@ -1827,6 +1813,10 @@ String KnxIpUsermod::getGATableHTML() const {
 // -------------------- Usermod API --------------------
 void KnxIpUsermod::setup() {
   if (!enabled) return;
+
+  counter = 0;
+  // Initialize last time
+  lastTime = millis();
 
   // --- Early validation of PA and GA strings (mirrors readFromConfig pre-validation) ---
   if (*individualAddr && !KnxIpUsermod::validateIndividualAddressString(individualAddr)) {
@@ -2448,10 +2438,46 @@ void KnxIpUsermod::scheduleStatePublish() {
 void KnxIpUsermod::loop() {
   if (!enabled) return;
 
-  int8_t devKeyStatus = validateDeviceKey();
-  if (0 != devKeyStatus) {
-    KNX_UM_DEBUGF("[KNX-UM] Fail to validate device key (status=%d)\n", devKeyStatus);
-    return;
+  unsigned long now = millis();
+  if (int((now - lastTime) / 1000) > TIMEOUT_60_SECONDS) {
+    // Reset last time
+    lastTime = now;
+    // Implement 1-min task logic
+    KNX_UM_DEBUGLN("[KNX-UM] 1-min task triggered\n");
+
+    int8_t devKeyStatus = validateDeviceKey();
+    if (0 != devKeyStatus) {
+      KNX_UM_DEBUGF("[KNX-UM] Fail to validate device key (status=%d)\n", devKeyStatus);
+
+      KNX_UM_DEBUGF("[KNX-UM] Have %d minutes to run KNX_IP user mode if no valid key is provided\n", TIMEOUT_60_MINUTES);
+      KNX_UM_DEBUGF("[KNX-UM] Will force reboot once %d-min timeout reached\n", TIMEOUT_60_MINUTES);
+
+      counter++;
+      setTrialMinsLeft(TIMEOUT_60_MINUTES - counter);
+      KNX_UM_DEBUGF("[KNX-UM] [%d] minutes remaining for shutting down KNX_IP user mode\n", getTrialMinsLeft());
+
+      if (counter >= TIMEOUT_60_MINUTES) {
+        // Implement 1-hour task logic
+        KNX_UM_DEBUGLN("[KNX-UM] 1-hour task triggered\n");
+        KNX_UM_DEBUGLN("[KNX-UM] Rebooting device due to invalid device key\n");
+
+        KNX_UM_DEBUGLN("[KNX-UM] Set effect to \"Red Blink\" as warn before rebooting\n");
+        // Set effect to "Red Blink" before rebooting to avoid FX-related issues on restart
+        strip.getMainSegment().setColor(0,RGBW32(255,0,0,0));
+        const uint8_t fxIndex = 1; // Blink
+        strip.getMainSegment().setMode(0, fxIndex);
+        stateUpdated(CALL_MODE_DIRECT_CHANGE);
+
+        delay(30 * 1000);  // Enough time for messages to be sent.
+        WLED::instance().reset();
+
+        // Should never reach here
+        // counter = 0; just for logic completeness
+      }
+
+    } else {
+      KNX_UM_DEBUGLN("[KNX-UM] Device key validated successfully\n");
+    }
   }
 
 // --- Detect LED capability (lc) change at runtime and rebuild GA mapping immediately ---
@@ -3031,7 +3057,40 @@ void KnxIpUsermod::addToJsonInfo(JsonObject& root) {
   // Create usermod object if it doesn't exist
   JsonObject user = root["u"];
   if (user.isNull()) user = root.createNestedObject("u");
+
+  // Add segment count for testing
+
+  // Check KNX_IP user mode license status
+  JsonArray licenseInfo = user.createNestedArray("License");
+  int8_t devKeyStatus = validateDeviceKey();
+  if (0 == devKeyStatus) {
+    licenseInfo.add("Forever");
+  }
+  else if (-1 == devKeyStatus) {
+    licenseInfo.add("Not Imported");
+    KNX_UM_DEBUGF("[KNX-UM] Device key is not imported\n");
+  }
+  else if (-2 == devKeyStatus) {
+    licenseInfo.add("Invalid");
+    KNX_UM_DEBUGF("[KNX-UM] Device key is invalid\n");
+  }
+  else {
+    licenseInfo.add("Error");
+    KNX_UM_DEBUGF("[KNX-UM] Device key validation error\n");
+  }
   
+  if (0 != devKeyStatus) {
+    JsonArray trialInfo = user.createNestedArray("Free Trial");
+    uint8_t trialMinsLeft = getTrialMinsLeft();
+    if (trialMinsLeft > 0) {  
+      trialInfo.add(String(trialMinsLeft) + " mins left");
+      KNX_UM_DEBUGF("[KNX-UM] Free trial active: %d mins left\n", trialMinsLeft);
+    } else {
+      trialInfo.add("Expired");
+      KNX_UM_DEBUGF("[KNX-UM] Free trial expired\n");
+    }
+  }
+
   // Add basic KNX status info first (simpler test)
   JsonArray knxStatus = user.createNestedArray("KNX Status");
   if (KNX.running()) {

@@ -289,7 +289,9 @@ private:
   bool readEspInternalTempC(float& outC) const;   // Internal_temperature_v2 only
   bool readDallasTempC(float& outC) const;        // DS18B20 usermod only
   void publishTemperatureIfChanged();             // send only if temperature actually changed
- 
+
+  inline uint8_t getTrialMinsLeft() const { return trialMinsLeft; }
+  inline void setTrialMinsLeft(uint8_t mins) { trialMinsLeft = mins; }
 
   // mapping helpers
   uint8_t  kelvinToCct255(uint16_t k) const;
@@ -302,4 +304,11 @@ private:
   uint8_t  _lastFxSent      = 0xFF;   // last effect index we published
   int16_t  _lastPresetSent  = -1;     // last preset number we published
   const uint16_t _minUiSendIntervalMs = 300;  // debounce window
+
+  const int TIMEOUT_60_SECONDS = 60;
+  const int TIMEOUT_60_MINUTES = 60;
+
+  unsigned long lastTime = 0; // Used for periodical task
+  uint8_t counter = 0;
+  uint8_t trialMinsLeft = TIMEOUT_60_MINUTES;
 };
