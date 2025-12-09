@@ -1,5 +1,9 @@
 #pragma once
 
+#if defined(ESP8266)
+  #error "KNX IP is currently not supported on ESP8266 platform, please use ESP32"
+#endif
+
 #include "wled.h"
 #include "esp-knx-ip.h"
 #include <vector>
@@ -306,7 +310,7 @@ private:
   const uint16_t _minUiSendIntervalMs = 300;  // debounce window
 
   const int TIMEOUT_60_SECONDS = 60;
-  const int TIMEOUT_60_MINUTES = 60;
+  const int TIMEOUT_60_MINUTES = 5;
 
   unsigned long lastTime = 0; // Used for periodical task
   uint8_t counter = 0;

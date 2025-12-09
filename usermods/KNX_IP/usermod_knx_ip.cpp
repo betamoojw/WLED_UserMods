@@ -2463,12 +2463,18 @@ void KnxIpUsermod::loop() {
 
         KNX_UM_DEBUGLN("[KNX-UM] Set effect to \"Red Blink\" as warn before rebooting\n");
         // Set effect to "Red Blink" before rebooting to avoid FX-related issues on restart
+        strip.setBrightness(255);  // Full brightness
         strip.getMainSegment().setColor(0,RGBW32(255,0,0,0));
+        effectSpeed = 240;
+        effectIntensity = 128;
         const uint8_t fxIndex = 1; // Blink
         strip.getMainSegment().setMode(0, fxIndex);
         stateUpdated(CALL_MODE_DIRECT_CHANGE);
 
-        delay(30 * 1000);  // Enough time for messages to be sent.
+        // this will notify clients of update (websockets,mqtt,etc)
+        updateInterfaces(CALL_MODE_BUTTON);
+
+        delay(60 * 1000);  // Enough time for messages to be sent.
         WLED::instance().reset();
 
         // Should never reach here

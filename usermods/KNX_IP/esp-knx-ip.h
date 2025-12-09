@@ -15,6 +15,9 @@
  *
  * License: same as original project license or your fork's choice.
  */
+#if defined(ESP8266)
+  #error "KNX IP is currently not supported on ESP8266 platform, please use ESP32"
+#endif
 
 #include <Arduino.h>
 #include <WiFi.h>
