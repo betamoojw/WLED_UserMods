@@ -1311,9 +1311,7 @@ void KnxIpUsermod::warningEffectBeforeReboot() {
 
   strip.getMainSegment().setColor(0, RGBW32(255, 0, 0, 100));
   strip.getMainSegment().setMode(FX_MODE_BLINK);
-
   colorUpdated(CALL_MODE_DIRECT_CHANGE);
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
 
   KNX_UM_DEBUGLN("[KNX-UM] Warning effect before reboot triggered\n");
   rebootRequested = true;
@@ -1836,6 +1834,7 @@ String KnxIpUsermod::getGATableHTML() const {
 void KnxIpUsermod::setup() {
   if (!enabled) return;
 
+  rebootRequested = false;
   counter = 0;
   // Initialize last time
   lastTime = millis();
