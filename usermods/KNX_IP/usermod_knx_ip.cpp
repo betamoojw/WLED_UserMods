@@ -1012,7 +1012,10 @@ extern "C" {
 #endif
 
 static inline uint8_t addClamp255(uint8_t v, int16_t delta){
-  int nv = (int)v + (int)delta; if (nv<0) nv=0; else if (nv>255) nv=255; return (uint8_t)nv; }
+  int nv = (int)v + (int)delta; 
+  if (nv<0) nv=0; else if (nv>255) nv=255; 
+  return (uint8_t)nv; 
+}
 
 // Adjust split white (warm/cold) by applying delta to one component, recombining to new W & CCT
 void KnxIpUsermod::adjustWhiteSplitRel(int16_t delta, bool adjustWarm) {
@@ -1055,15 +1058,29 @@ void KnxIpUsermod::onKnxBrightnessRel(uint8_t dpt3) {
 }
 
 void KnxIpUsermod::onKnxColorRel(uint8_t channel, uint8_t dpt3) {
+  if (channel > 3) return;
   int16_t d = knx_step_delta(dpt3 & 0x0F, 255);
   if (!d) return;
-  uint8_t r,g,b,w; getCurrentRGBW(r,g,b,w);
-  uint8_t* tgt = nullptr;
-  switch(channel){case 0: tgt=&r; break; case 1: tgt=&g; break; case 2: tgt=&b; break; case 3: tgt=&w; break;}
-  if (!tgt) return;
-  *tgt = addClamp255(*tgt, d);
-  strip.getMainSegment().setColor(0,RGBW32(r,g,b,w));
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
+  
+  uint8_t rgbw[4];
+  getCurrentRGBW(rgbw[0], rgbw[1], rgbw[2], rgbw[3]);
+  KNX_UM_DEBUGF("[KNX-UM] onKnxColorRel: current setting R=%d G=%d B=%d W=%d\n", rgbw[0], rgbw[1], rgbw[2], rgbw[3]);
+  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: Current WLED state: bri=%d, on=%d\n", bri, (bri > 0));
+
+  rgbw[channel] = addClamp255(rgbw[channel], d);
+  strip.getMainSegment().setColor(0, RGBW32(rgbw[0], rgbw[1], rgbw[2], rgbw[3]));
+  KNX_UM_DEBUGF("[KNX-UM] onKnxColorRel: new setting R=%d G=%d B=%d W=%d\n", rgbw[0], rgbw[1], rgbw[2], rgbw[3]);
+
+  // Update global color variables for GUI synchronization
+  colPri[0] = rgbw[0];
+  colPri[1] = rgbw[1];
+  colPri[2] = rgbw[2];
+  colPri[3] = rgbw[3];
+  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: segment color and global colPri updated, calling stateUpdated()\n");
+
+  stateUpdated(CALL_MODE_DIRECT_CHANGE);
+  KNX_UM_DEBUGF("[KNX-UM] onKnxColorRel: stateUpdated() called, scheduling state publish\n");
+
   scheduleStatePublish();
 }
 
