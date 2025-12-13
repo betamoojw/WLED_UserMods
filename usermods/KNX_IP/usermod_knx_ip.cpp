@@ -1596,18 +1596,33 @@ void KnxIpUsermod::onKnxTime_10_001(const uint8_t* p, uint8_t len) {
   if (!p || len < 3) return;
   dumpBytesHexLocal(p, len);
 
+  // DPT 10 (Time of day) encoding:
+  //  - byte0: bits 0..4 = hour (0..23), bit7 may indicate 'invalid'
+  //  - byte1: bits 0..5 = minute (0..59)
+  //  - byte2: bits 0..5 = second (0..59)
+  const bool invalidFlag = (p[0] & 0x80) != 0;
   const int hour   =  p[0] & 0x1F;  // 5 bits
   const int minute =  p[1] & 0x3F;  // 6 bits
   const int second =  p[2] & 0x3F;  // 6 bits
+
+  // Validate: respect KNX 'invalid' flag and sensible ranges
+  if (invalidFlag) {
+    KNX_UM_DEBUGF("[KNX-UM][TIME] DPT10 invalid flag set (byte0=0x%02X) -> ignore\n", p[0]);
+    return;
+  }
+  if (hour > 23 || minute > 59 || second > 59) {
+    KNX_UM_DEBUGF("[KNX-UM][TIME] DPT10 out-of-range values: %02d:%02d:%02d -> ignore\n", hour, minute, second);
+    return;
+  }
 
   // Get current date to merge with
   time_t nowUtc = time(nullptr);
   struct tm curLocal{}; localtime_r(&nowUtc, &curLocal);
 
   struct tm t{};
-  t.tm_year  = curLocal.tm_year;                 // keep current date
-  t.tm_mon   = curLocal.tm_mon;
-  t.tm_mday  = curLocal.tm_mday;
+  t.tm_year  = year(localTime)-1900;                 // keep current date
+  t.tm_mon   = month(localTime)-1;
+  t.tm_mday  = day(localTime);
   t.tm_hour  = hour;
   t.tm_min   = minute;
   t.tm_sec   = second;
