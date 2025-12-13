@@ -193,6 +193,7 @@ std::vector<uint16_t> KnxIpUsermod::getAllUsedGAs() const {
   // Essential central input GAs
   addGA(gaInPower); addGA(gaInBri); addGA(gaInFx);
   addGA(gaInR); addGA(gaInG); addGA(gaInB); addGA(gaInW);
+  addGA(gaInH); addGA(gaInS); addGA(gaInV);
   addGA(gaInPreset); addGA(gaInRGB); addGA(gaInHSV); addGA(gaInRGBW);
   
   // Essential central output GAs  
@@ -900,12 +901,12 @@ void KnxIpUsermod::onKnxBrightness(uint8_t pct) {
 
 void KnxIpUsermod::onKnxRGB(uint8_t r, uint8_t g, uint8_t b) {
   uint8_t cr,cg,cb,cw; getCurrentRGBW(cr,cg,cb,cw);
-  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: R=%d G=%d B=%d -> setting R=%d G=%d B=%d W=%d\n", r, g, b, r, g, b, cw);
+  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: R=%d G=%d B=%d <- current setting R=%d G=%d B=%d W=%d\n", r, g, b, cr, cg, cb, cw);
   KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: Current WLED state: bri=%d, on=%d\n", bri, (bri > 0));
   
   // Auto-enable feature: if brightness is 0 and color changes, set brightness automatically
   if (autoEnableOnColor && bri == 0 && (r > 0 || g > 0 || b > 0)) {
-    KNX_UM_DEBUGF("[KNX-UM] Auto-enable: Color changed while brightness=0, setting brightness to %d\n", autoEnableBrightness);
+    KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: Auto-enable: Color changed while brightness=0, setting brightness to %d\n", autoEnableBrightness);
     bri = autoEnableBrightness;
   }
   
@@ -918,10 +919,11 @@ void KnxIpUsermod::onKnxRGB(uint8_t r, uint8_t g, uint8_t b) {
   colPri[1] = g; 
   colPri[2] = b;
   colPri[3] = cw;
-  
   KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: segment color and global colPri updated, calling stateUpdated()\n");
+
   stateUpdated(CALL_MODE_DIRECT_CHANGE);
   KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: stateUpdated() called, scheduling state publish\n");
+
   scheduleStatePublish();
 }
 
@@ -1222,11 +1224,31 @@ void KnxIpUsermod::rgbToHsv(uint8_t r, uint8_t g, uint8_t b, float& h, float& s,
 }
 
 void KnxIpUsermod::applyHSV(float hDeg, float s01, float v01, bool preserveWhite) {
-  uint8_t r,g,b; hsvToRgb(hDeg, s01, v01, r, g, b);
+  uint8_t r,g,b; hsvToRgb(hDeg, 101-s01, 101-v01, r, g, b);
+  // onKnxRGB(r, g, b); // reuse existing handler to ensure consistency
   uint8_t cr,cg,cb,cw; getCurrentRGBW(cr,cg,cb,cw);
   if (!preserveWhite) cw = 0; // optional future use; currently always true
-  strip.getMainSegment().setColor(0, RGBW32(cr, cg, cb, cw));
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
+  KNX_UM_DEBUGF("[KNX-UM] applyHSV: R=%d G=%d B=%d <- current setting R=%d G=%d B=%d W=%d\n", r, g, b, cr, cg, cb, cw);
+  KNX_UM_DEBUGF("[KNX-UM] applyHSV: Current WLED state: bri=%d, on=%d\n", bri, (bri > 0));
+
+  // Auto-enable feature: if brightness is 0 and color changes, set brightness automatically
+  if (autoEnableOnColor && bri == 0 && (r > 0 || g > 0 || b > 0)) {
+    KNX_UM_DEBUGF("[KNX-UM] applyHSV: Auto-enable: Color changed while brightness=0, setting brightness to %d\n", autoEnableBrightness);
+    bri = autoEnableBrightness;
+  }
+
+  strip.getMainSegment().setColor(0, RGBW32(r, g, b, cw));
+
+    // Update global color variables for GUI synchronization
+  colPri[0] = r;
+  colPri[1] = g; 
+  colPri[2] = b;
+  colPri[3] = cw;
+  KNX_UM_DEBUGF("[KNX-UM] applyHSV: segment color and global colPri updated, calling stateUpdated()\n");
+
+  stateUpdated(CALL_MODE_DIRECT_CHANGE);
+  KNX_UM_DEBUGF("[KNX-UM] applyHSV: stateUpdated() called, scheduling state publish\n");
+
   scheduleStatePublish();
 }
 
@@ -1958,6 +1980,10 @@ void KnxIpUsermod::setup() {
   GA_IN_H    = parseGA(gaInH);
   GA_IN_S    = parseGA(gaInS);
   GA_IN_V    = parseGA(gaInV);
+  if (!GA_IN_H     && *gaInH)      KNX_UM_WARNF("[KNX-UM][WARN] Invalid GA in h '%s'\n", gaInH);
+  if (!GA_IN_S     && *gaInS)      KNX_UM_WARNF("[KNX-UM][WARN] Invalid GA in s '%s'\n", gaInS);
+  if (!GA_IN_V     && *gaInV)      KNX_UM_WARNF("[KNX-UM][WARN] Invalid GA in v '%s'\n", gaInV);
+
   GA_IN_TIME     = parseGA(gaInTime);
   GA_IN_DATE     = parseGA(gaInDate);
   GA_IN_DATETIME = parseGA(gaInDateTime);
@@ -2035,13 +2061,21 @@ void KnxIpUsermod::setup() {
     KNX_UM_DEBUGF("[KNX-UM] DEBUG: GA_IN_RGB is 0, not registering RGB handler\n");
   }
   if (GA_IN_HSV) {
+    KNX_UM_DEBUGF("[KNX-UM] DEBUG: Registering HSV handler for GA 0x%04X\n", GA_IN_HSV);
     registerMultiHandler(GA_IN_HSV, DptMain::DPT_232xx, 3, [this](const uint8_t* p){
+      KNX_UM_DEBUGF("[KNX-UM] DEBUG: HSV callback triggered with data: %02X %02X %02X in hex\n", p[0], p[1], p[2]);
       float h = byteToHueDeg(p[0]);
       float s = byteToPct01(p[1]);
       float v = byteToPct01(p[2]);
+      // Print HSV as integers: Hue (degrees) and S/V as percent (0..100)
+      KNX_UM_DEBUGF("[KNX-UM] DEBUG: HSV callback triggered with data: %d %d %d in decimal\n",
+                     (int)(h + 0.5f), (int)(s * 100.0f + 0.5f), (int)(v * 100.0f + 0.5f));
       applyHSV(h,s,v,true);
     });
+  } else {
+    KNX_UM_DEBUGF("[KNX-UM] DEBUG: GA_IN_HSV is 0, not registering HSV handler\n");
   }
+
   if (GA_IN_RGBW) {
     registerMultiHandler(GA_IN_RGBW, DptMain::DPT_251xx, 4, [this](const uint8_t* p){ onKnxRGBW(p[0],p[1],p[2],p[3]); });
   }
