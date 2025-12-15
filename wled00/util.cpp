@@ -1255,7 +1255,7 @@ int8_t validateDeviceKey()
   if (WLED_FS.exists(DEVICE_KEY_FILE))
   {
     DEBUG_PRINT(F(DEV_KEY_DEBUG_NAME "Read the device key file: "));
-    File file = WLED_FS.open(DEVICE_KEY_FILE, FILE_READ);
+    File file = WLED_FS.open(DEVICE_KEY_FILE, "r");
     if (!file)
     {
       DEBUG_PRINTLN("Failed to open device key file!");
