@@ -58,8 +58,6 @@ void Xiaozhi_MCP::setup()
   MCP_UM_DEBUGF("[MCP-UM] MCP Endpoint: '%s'\n", mcpEndpoint.c_str());
 
   // Start MCP service
-  // TODO: Implement MCP service start logic here
-  // 初始化MCP客户端
   mcpClient.begin(mcpEndpoint.c_str(), onConnectionStatus);
 
   // Initialize last time
@@ -171,6 +169,8 @@ void Xiaozhi_MCP::publishMqtt(const char *state, bool retain)
 #endif
 }
 
+
+
 void onConnectionStatus(bool connected) {
   if (connected) {
     Serial.println("[MCP] 已连接到服务器");
@@ -201,7 +201,7 @@ void registerMcpTools()
             bri = (briLast > 0) ? briLast : 128;
           }
         }
-        else (state == "off")
+        else if (state == "off")
         {
           briLast = bri;
           bri = 0;
