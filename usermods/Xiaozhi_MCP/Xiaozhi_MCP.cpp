@@ -59,6 +59,8 @@ void Xiaozhi_MCP::setup()
 
   // Start MCP service
   // TODO: Implement MCP service start logic here
+  // 初始化MCP客户端
+  mcpClient.begin(mcpEndpoint.c_str(), onConnectionStatus);
 
   // Initialize last time
   lastTime = millis();
@@ -99,7 +101,7 @@ void Xiaozhi_MCP::loop()
   }
 #endif
 // Handle MCP client events
-  // mcp.loop();
+  mcpClient.loop();
 }
 
 void Xiaozhi_MCP::addToJsonInfo(JsonObject &root)
@@ -167,6 +169,49 @@ void Xiaozhi_MCP::publishMqtt(const char *state, bool retain)
     // Todo: adjust topic as needed
   }
 #endif
+}
+
+void onConnectionStatus(bool connected) {
+  if (connected) {
+    Serial.println("[MCP] 已连接到服务器");
+    // 连接成功后注册工具
+    registerMcpTools();
+  } else {
+    Serial.println("[MCP] 与服务器断开连接");
+  }
+}
+
+void registerMcpTools()
+{
+  // 注册一个简单的LED控制工具
+  mcpClient.registerTool(
+      "led_blink",
+      "控制ESP32板载LED",
+      "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\",\"enum\":[\"on\",\"off\"]}},\"required\":[\"state\"]}",
+      [](const String &args)
+      {
+        DynamicJsonDocument doc(256);
+        deserializeJson(doc, args);
+        String state = doc["state"].as<String>();
+
+        if (state == "on")
+        {
+          if (bri == 0)
+          {
+            bri = (briLast > 0) ? briLast : 128;
+          }
+        }
+        else (state == "off")
+        {
+          briLast = bri;
+          bri = 0;
+        }
+        
+        stateUpdated(CALL_MODE_DIRECT_CHANGE);
+
+        return WebSocketMCP::ToolResponse("{\"success\":true,\"state\":\"" + state + "\"}");
+      });
+  Serial.println("[MCP] LED控制工具已注册");
 }
 
 const char Xiaozhi_MCP::_name[] PROGMEM = "Xiaozhi_MCP";

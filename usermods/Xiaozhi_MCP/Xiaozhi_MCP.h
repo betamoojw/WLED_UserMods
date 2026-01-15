@@ -43,6 +43,8 @@ public:
   const char *getName() { return "Xiaozhi_MCP"; }
 
 private:
+
+
   // --- Config values (editable via JSON/UI) ---
   bool isEnabled = false;
   unsigned long connRetryInterval = 5000;
@@ -64,3 +66,7 @@ private:
   // any private methods should go here (non-inline method should be defined out of class)
   void publishMqtt(const char *state, bool retain = false); // example for publishing MQTT message
 };
+
+WebSocketMCP mcpClient;
+void onConnectionStatus(bool connected);
+void registerMcpTools();
