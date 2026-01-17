@@ -41,8 +41,10 @@ public:
   bool readFromConfig(JsonObject &root);
   uint16_t getId() { return USERMOD_ID_XIAOZHI_MCP; }
   const char *getName() { return "Xiaozhi_MCP"; }
+
   // Accessors for MCP terminal alias
   const String &getMcpTerminalAlias() const { return mcpTerminalAlias; }
+  void setMcpTerminalAlias(const String &alias) { mcpTerminalAlias = alias; }
 
 private:
   // --- Config values (editable via JSON/UI) ---

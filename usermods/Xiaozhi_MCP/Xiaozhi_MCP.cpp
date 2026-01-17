@@ -218,8 +218,60 @@ void registerMcpTools(const String &alias)
 {
   String description = "";
 
+  // Register WLED status tool
+  description = alias + " 状态";
+  mcpClient.registerTool(
+      "led_status",
+      description,
+      "{\"type\":\"object\",\"properties\":{},\"required\":[]}",
+      [](const String &args)
+      {
+        // Build a small JSON object describing current WLED status
+        DynamicJsonDocument respDoc(256);
+        uint8_t r, g, b, w;
+        getCurrentRGBW(r, g, b, w);
+
+        uint8_t bri255 = strip.getBrightness();
+        bool on = (bri255 > 0);
+        // map 0..255 -> 0..100 (rounded)
+        uint8_t briPct = (uint8_t)(((uint32_t)bri255 * 100 + 127) / 255);
+
+        int effectIndex = strip.getMainSegment().mode;
+
+        respDoc["on"] = on;
+        respDoc["brightness255"] = bri255;
+        respDoc["brightness"] = briPct;
+        respDoc["effect"] = effectIndex;
+
+        JsonObject color = respDoc.createNestedObject("color");
+        color["r"] = r;
+        color["g"] = g;
+        color["b"] = b;
+        color["w"] = w;
+
+        String resp;
+        serializeJson(respDoc, resp);
+        return WebSocketMCP::ToolResponse(resp);
+      });
+
+  // Register tool to GET the terminal alias
+  description = alias + " 获取别名";
+  mcpClient.registerTool(
+      "led_get_alias",
+      description,
+      "{\"type\":\"object\",\"properties\":{},\"required\":[]}",
+      [](const String &args)
+      {
+        DynamicJsonDocument respDoc(128);
+        // Use the runtime terminalAlias if available, otherwise fallback to xiaozhi_mcp getter
+        respDoc["alias"] = terminalAlias;
+        String resp;
+        serializeJson(respDoc, resp);
+        return WebSocketMCP::ToolResponse(resp);
+      });
+
   // Register WLED on/off control tool
-  description = alias + "开关";
+  description = alias + " 开关";
   mcpClient.registerTool(
       "led_on_off",
       description,
@@ -248,7 +300,7 @@ void registerMcpTools(const String &alias)
       });
 
   // Register WLED brightness control tool
-  description = alias + "亮度";
+  description = alias + " 亮度";
   mcpClient.registerTool(
       "led_brightness",
       description,
@@ -275,7 +327,7 @@ void registerMcpTools(const String &alias)
       });
 
   // Register WLED RGB color control tool
-  description = alias + "颜色";
+  description = alias + " 颜色";
   mcpClient.registerTool(
       "led_color",
       description,
@@ -325,7 +377,7 @@ void registerMcpTools(const String &alias)
       });
 
   // Register WLED effect control tool
-  description = alias + "效果 (0-128)";
+  description = alias + " 效果 (0-128)";
   mcpClient.registerTool(
       "led_effect",
       description,
