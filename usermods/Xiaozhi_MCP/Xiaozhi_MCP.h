@@ -60,6 +60,7 @@ private:
   const int TIMEOUT_60_MINUTES = 60;
 
   // any private methods should go here (non-inline method should be defined out of class)
+  bool checkMcpConfig();
   void publishMqtt(const char *state, bool retain = false); // example for publishing MQTT message
 };
 

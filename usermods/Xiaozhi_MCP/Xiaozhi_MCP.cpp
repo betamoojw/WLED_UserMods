@@ -8,12 +8,6 @@ void Xiaozhi_MCP::setup()
     return;
   }
 
-  if (((mcpEndpoint == "") || mcpEndpoint.length() == 0))
-  {
-    MCP_UM_WARNLN("[MCP-UM] MCP Endpoint is empty, disabling usermod.");
-    return;
-  }
-
   // Check network connectivity
   if (!Network.isConnected())
   {
@@ -53,16 +47,17 @@ void Xiaozhi_MCP::setup()
   // Additional safety: ensure we're not in a critical network transition
   yield();
 
-  MCP_UM_DEBUGF("[MCP-UM] Mode Name: '%s'\n", getName());
-  MCP_UM_DEBUGF("[MCP-UM] MCP Endpoint: '%s'\n", mcpEndpoint.c_str());
+  if (!checkMcpConfig())
+  {
+    MCP_UM_WARNLN("[MCP-UM] MCP configuration invalid, disabling usermod.");
+    return;
+  }
 
   // Start MCP service
-  mcpClient.begin(mcpEndpoint.c_str(), onConnectionStatus);
+  isSetupDone = mcpClient.begin(mcpEndpoint.c_str(), onConnectionStatus);
 
   // Initialize last time
   lastTime = millis();
-
-  isSetupDone = true;
 }
 
 void Xiaozhi_MCP::loop()
@@ -73,20 +68,21 @@ void Xiaozhi_MCP::loop()
   }
 
   unsigned long now = millis();
-  if (int((now - lastTime) / 1000) > TIMEOUT_60_SECONDS)
+  // compute elapsed ms as unsigned long to avoid ambiguous abs() overload on unsigned types
+  unsigned long elapsedMs = now - lastTime;
+  if ((elapsedMs / 1000UL) > (unsigned long)TIMEOUT_60_SECONDS)
   {
     // Reset last time
     lastTime = now;
     // Implement 1-min task logic
     MCP_UM_DEBUGLN("[MCP-UM] 1-min task triggered\n");
 
-    // Check network connectivity
+    // Check network connectivity and attempt setup if not done
     if (Network.isConnected() && !isSetupDone)
     {
       setup();
     }
   }
-
 
 #ifndef WLED_DISABLE_MQTT
   if (WLED_MQTT_CONNECTED)
@@ -131,8 +127,8 @@ void Xiaozhi_MCP::addToJsonInfo(JsonObject &root)
   }
 
   // Check MCP terminal alias status
-  JsonArray mcpTerminalAlias = user.createNestedArray("MCP Terminal Alias");
-  mcpTerminalAlias.add(F(mcpTerminalAlias.c_str()));
+  JsonArray mcpAlias = user.createNestedArray("MCP Terminal Alias");
+  mcpAlias.add(F(mcpTerminalAlias.c_str()));
 }
 
 void Xiaozhi_MCP::addToConfig(JsonObject &root)
@@ -157,6 +153,28 @@ bool Xiaozhi_MCP::readFromConfig(JsonObject &root)
   configComplete &= getJsonValue(top[FPSTR(_mcpTerminalAlias)], mcpTerminalAlias);
   configComplete &= getJsonValue(top[FPSTR(_mcpEndpoint)], mcpEndpoint);
   return configComplete;
+}
+
+bool Xiaozhi_MCP::checkMcpConfig()
+{
+  // Check MCP endpoint
+  if (((mcpEndpoint == "") || mcpEndpoint.length() == 0))
+  {
+    MCP_UM_WARNLN("[MCP-UM] MCP Endpoint is empty, disabling usermod.");
+    return false;
+  }
+
+  // Check MCP terminal alias
+  if (((mcpTerminalAlias == "") || mcpTerminalAlias.length() == 0))
+  {
+    mcpTerminalAlias = "LED";
+    MCP_UM_WARNLN("[MCP-UM] MCP Terminal Alias is empty, using default: LED");
+  }
+
+  MCP_UM_DEBUGF("[MCP-UM] Mode Name: '%s'\n", getName());
+  MCP_UM_DEBUGF("[MCP-UM] MCP Endpoint: '%s'\n", mcpEndpoint.c_str());
+
+  return true;
 }
 
 void Xiaozhi_MCP::publishMqtt(const char *state, bool retain)
