@@ -53,6 +53,9 @@ void Xiaozhi_MCP::setup()
     return;
   }
 
+  // initialize terminalAlias from this instance (safe to call at runtime)
+  terminalAlias = this->getMcpTerminalAlias();
+
   // Start MCP service
   isSetupDone = mcpClient.begin(mcpEndpoint.c_str(), onConnectionStatus);
 
@@ -203,7 +206,7 @@ void onConnectionStatus(bool connected)
   {
     Serial.println("[MCP] Connected to server");
     // Register tools after successful connection
-    registerMcpTools();
+    registerMcpTools(terminalAlias);
   }
   else
   {
@@ -211,12 +214,15 @@ void onConnectionStatus(bool connected)
   }
 }
 
-void registerMcpTools()
+void registerMcpTools(const String &alias)
 {
+  String description = "";
+
   // Register WLED on/off control tool
+  description = alias + "开关";
   mcpClient.registerTool(
       "led_on_off",
-      "控制WLED开关",
+      description,
       "{\"type\":\"object\",\"properties\":{\"state\":{\"type\":\"string\",\"enum\":[\"on\",\"off\"]}},\"required\":[\"state\"]}",
       [](const String &args)
       {
@@ -242,9 +248,10 @@ void registerMcpTools()
       });
 
   // Register WLED brightness control tool
+  description = alias + "亮度";
   mcpClient.registerTool(
       "led_brightness",
-      "控制WLED亮度",
+      description,
       "{\"type\":\"object\",\"properties\":{\"brightness\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":100}},\"required\":[\"brightness\"]}",
       [](const String &args)
       {
@@ -268,9 +275,10 @@ void registerMcpTools()
       });
 
   // Register WLED RGB color control tool
+  description = alias + "颜色";
   mcpClient.registerTool(
       "led_color",
-      "控制WLED颜色",
+      description,
       "{\"type\":\"object\",\"properties\":{\"r\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":255},\"g\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":255},\"b\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":255}},\"required\":[\"r\",\"g\",\"b\"]}",
       [](const String &args)
       {
@@ -317,9 +325,10 @@ void registerMcpTools()
       });
 
   // Register WLED effect control tool
+  description = alias + "效果 (0-128)";
   mcpClient.registerTool(
       "led_effect",
-      "控制WLED效果 (0-128)",
+      description,
       "{\"type\":\"object\",\"properties\":{\"effect\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":128}},\"required\":[\"effect\"]}",
       [](const String &args)
       {

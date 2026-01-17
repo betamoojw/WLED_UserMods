@@ -41,6 +41,8 @@ public:
   bool readFromConfig(JsonObject &root);
   uint16_t getId() { return USERMOD_ID_XIAOZHI_MCP; }
   const char *getName() { return "Xiaozhi_MCP"; }
+  // Accessors for MCP terminal alias
+  const String &getMcpTerminalAlias() const { return mcpTerminalAlias; }
 
 private:
   // --- Config values (editable via JSON/UI) ---
@@ -64,8 +66,10 @@ private:
   void publishMqtt(const char *state, bool retain = false); // example for publishing MQTT message
 };
 
-static void getCurrentRGBW(uint8_t &r, uint8_t &g, uint8_t &b, uint8_t &w);
 
 WebSocketMCP mcpClient;
+static String terminalAlias; // declare only; initialize in setup()
+
+static void getCurrentRGBW(uint8_t &r, uint8_t &g, uint8_t &b, uint8_t &w);
 void onConnectionStatus(bool connected);
-void registerMcpTools();
+void registerMcpTools(const String &alias);
