@@ -236,7 +236,6 @@ void registerMcpTools()
           briLast = bri;
           bri = 0;
         }
-
         stateUpdated(CALL_MODE_DIRECT_CHANGE);
 
         return WebSocketMCP::ToolResponse("{\"success\":true,\"state\":\"" + state + "\"}");
@@ -259,11 +258,11 @@ void registerMcpTools()
         // map 0..100 -> 0..255 with rounding
         bri = (uint8_t)(((uint32_t)brightness * 255 + 50) / 100);
         // update last-brightness if turning from zero to non-zero
-        if (bri > 0)
+        if (bri != strip.getBrightness())
         {
           briLast = bri;
+          stateUpdated(CALL_MODE_DIRECT_CHANGE);
         }
-        stateUpdated(CALL_MODE_DIRECT_CHANGE);
 
         return WebSocketMCP::ToolResponse("{\"success\":true,\"brightness\":" + String(brightness) + "}");
       });
@@ -289,11 +288,17 @@ void registerMcpTools()
         uint8_t g = (uint8_t)tg;
         uint8_t b = (uint8_t)tb;
 
-        uint8_t cr, cg, cb, cw, bri;
+        uint8_t cr, cg, cb, cw;
         getCurrentRGBW(cr, cg, cb, cw);
-        bri = strip.getBrightness();
         MCP_UM_DEBUGF("[MCP-UM] R=%d G=%d B=%d <- current setting R=%d G=%d B=%d W=%d\n", r, g, b, cr, cg, cb, cw);
         MCP_UM_DEBUGF("[MCP-UM] Current WLED state: bri=%d, on=%d\n", bri, (bri > 0));
+
+        // Check if brightness is zero
+        uint8_t bri = strip.getBrightness();
+        if (bri == 0)
+        {
+          bri = (briLast > 0) ? briLast : 128;
+        }
 
         // Set the color on the segment
         uint32_t newColor = RGBW32(r, g, b, cw);
@@ -325,6 +330,14 @@ void registerMcpTools()
         {
           return WebSocketMCP::ToolResponse("{\"success\":false,\"error\":\"invalid effect index\"}");
         }
+
+        // Check if brightness is zero
+        uint8_t bri = strip.getBrightness();
+        if (bri == 0)
+        {
+          bri = (briLast > 0) ? briLast : 128;
+        }
+
         // Set the LED effect by integer index (0..128)
         strip.getMainSegment().setMode(effectIndex);
         stateUpdated(CALL_MODE_DIRECT_CHANGE);
