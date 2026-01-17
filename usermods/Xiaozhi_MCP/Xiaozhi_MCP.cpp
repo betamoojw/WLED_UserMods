@@ -1,7 +1,7 @@
 #include "Xiaozhi_MCP.h"
 #include "src/dependencies/network/Network.h"
 
-/****************************************************************************************************/
+/************************************ static variables and functions declare ************************************/
 static WebSocketMCP mcpClient; // MCP client instance
 static String terminalAlias; // declare only; initialize in setup()
 
@@ -22,7 +22,7 @@ static void registerEffectCtrlTool(const String &alias);
 // Utility functions
 static void getCurrentRGBW(uint8_t &r, uint8_t &g, uint8_t &b, uint8_t &w);
 
-/****************************************************************************************************/
+/******************************************************************************************************************/
 
 void Xiaozhi_MCP::setup()
 {
@@ -214,18 +214,8 @@ void Xiaozhi_MCP::publishMqtt(const char *state, bool retain)
 #endif
 }
 
-/****************************************************************************************************/
-
-static void getCurrentRGBW(uint8_t &r, uint8_t &g, uint8_t &b, uint8_t &w)
-{
-  uint32_t c = SEGCOLOR(0); // primary color slot
-  r = R(c);
-  g = G(c);
-  b = B(c);
-  w = W(c);
-}
-
-void onConnectionStatus(bool connected)
+/**********************************static functions implementation ****************************************/
+static void onConnectionStatus(bool connected)
 {
   if (connected)
   {
@@ -239,8 +229,20 @@ void onConnectionStatus(bool connected)
   }
 }
 
-// (place these new helper functions near the existing registerMcpTools implementation)
+// MCP tool registration entry point
+static void registerMcpTools(const String &alias)
+{
+  registerGetStatusTool(alias);
+  registerGetMcpAliasTool(alias);
+  registerPowerCtrlTool(alias);
+  registerBrightnessCtrlTool(alias);
+  registerColorCtrlTool(alias);
+  registerEffectCtrlTool(alias);
 
+  Serial.println("[MCP] LED control tool registered");
+}
+
+// (place these new helper functions near the existing registerMcpTools implementation)
 static void registerGetStatusTool(const String &alias)
 {
   String description = alias + " 状态";
@@ -486,18 +488,16 @@ static void registerEffectCtrlTool(const String &alias)
       });
 }
 
-// Replace original registerMcpTools body with simple calls to the extracted helpers
-void registerMcpTools(const String &alias)
+static void getCurrentRGBW(uint8_t &r, uint8_t &g, uint8_t &b, uint8_t &w)
 {
-  registerGetStatusTool(alias);
-  registerGetMcpAliasTool(alias);
-  registerPowerCtrlTool(alias);
-  registerBrightnessCtrlTool(alias);
-  registerColorCtrlTool(alias);
-  registerEffectCtrlTool(alias);
-
-  Serial.println("[MCP] LED control tool registered");
+  uint32_t c = SEGCOLOR(0); // primary color slot
+  r = R(c);
+  g = G(c);
+  b = B(c);
+  w = W(c);
 }
+/**********************************static functions implementation ****************************************/
+
 
 const char Xiaozhi_MCP::_name[] PROGMEM = "Xiaozhi_MCP";
 const char Xiaozhi_MCP::_enabled[] PROGMEM = "Enabled";
