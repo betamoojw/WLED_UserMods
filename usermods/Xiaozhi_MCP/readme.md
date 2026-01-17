@@ -14,23 +14,28 @@ This user mode leverages the xiaozhi-esp32-mcp as backend service to establish t
 
 
 ## Features
- - ✨ Adds the Xiaozhi AI platform connection status to the `Info` tab
-
+ - ✨ Adds the Xiaozhi AI platform connection status and MCP alias to the `Info` tab
+ - ✨ Allows end user to enable/disable the Xiaozhi_MCP user mode (disabled as default), set MCP alias and endpoint in `settings`->`usermode` tab
+ - ✨ Supports Xiaozhi AI agent to control multiple WLED instances built-in with Xiaozhi_MCP user mode via the customized MCP alias
 
 ## Use Examples
-- Populate the Xiaozhi AI Agent MCP Endpoint in usermod settings page
-- This user mode will not run if MCP Endpoint is not populated
+- Populate the Xiaozhi AI Agent MCP Endpoint (and alias) in usermod settings page
+- This user mode will not run if MCP Endpoint (and alias) is not populated
 
 
 ## Compatibility
 - ESP32 supports this user mode while ESP8266 does not support
-- TBD
+- MCP tools (get the current status, power on/off, control brightness, set the color, set the effect and more - todo)
 
 
 ## Installation
 - Add `Xiaozhi_MCP` to `custom_usermods` in your `platformio.ini` (or `platformio_override.ini`).
 
 ## 📝 Change Log
+
+2026-01-18
+
+- "Xiaozhi_MCP" usermod initial release with primary functions.
 
 2025-12-31
 
