@@ -100,6 +100,7 @@ void License_Mgnt::addToJsonInfo(JsonObject &root)
   // Check license status
   JsonArray licenseInfo = user.createNestedArray("License");
   String devKeyStatusStr;
+  devKeyStatus = validateDeviceKey();
   getDevKeyStatusString(devKeyStatus, devKeyStatusStr);
   licenseInfo.add(devKeyStatusStr);
 
