@@ -51,7 +51,7 @@ private:
   int8_t devKeyStatus = -1; // 0=valid, -1=not imported, -2=invalid, -3=error
   unsigned long lastTime = 0;
   uint8_t counter = 0;
-  uint8_t trialMinsLeft = TIMEOUT_60_MINUTES;
+  uint8_t trialMinsLeft = 0;
   bool rebootRequested = false;
 
   static const char _name[];

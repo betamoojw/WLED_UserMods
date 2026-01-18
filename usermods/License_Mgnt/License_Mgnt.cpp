@@ -4,6 +4,7 @@ void License_Mgnt::setup()
 {
   LM_UM_DEBUGLN("[LM-UM] License Management Usermod setup started");  
 
+  trialMinsLeft = TIMEOUT_60_MINUTES;
   // Validate the device key on setup
   devKeyStatus = validateDeviceKey();
   getDevKeyStatusString(devKeyStatus, licenseStatus);
