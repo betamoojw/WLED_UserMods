@@ -34,7 +34,7 @@
 class KnxIpUsermod : public Usermod {
 public:
   // --- Config values (editable via JSON/UI) ---
-  bool  enabled = true;
+  bool  enabled = false;
   char  individualAddr[16] = "1.1.100";
   // --- GA Table cache ---
   mutable String gaTableCache;
@@ -274,8 +274,6 @@ private:
   void onKnxSegmentRGB(uint8_t segmentIndex, uint8_t r, uint8_t g, uint8_t b);
   void onKnxSegmentEffect(uint8_t segmentIndex, uint8_t fxIndex);
 
-  void warningEffectBeforeReboot();
-
   void evalAndPublishTempAlarm(uint16_t ga, float tempC, float maxC, bool& lastState, const char* tag);
 
   // System clock
@@ -296,8 +294,6 @@ private:
   bool readDallasTempC(float& outC) const;        // DS18B20 usermod only
   void publishTemperatureIfChanged();             // send only if temperature actually changed
 
-  inline uint8_t getTrialMinsLeft() const { return trialMinsLeft; }
-  inline void setTrialMinsLeft(uint8_t mins) { trialMinsLeft = mins; }
 
   // mapping helpers
   uint8_t  kelvinToCct255(uint16_t k) const;
@@ -312,11 +308,5 @@ private:
   const uint16_t _minUiSendIntervalMs = 300;  // debounce window
 
   const int TIMEOUT_60_SECONDS = 60;
-  const int TIMEOUT_60_MINUTES = 60;
-
   unsigned long lastTime = 0; // Used for periodical task
-  uint8_t counter = 0;
-  uint8_t trialMinsLeft = TIMEOUT_60_MINUTES;
-
-  bool rebootRequested = false;
 };
