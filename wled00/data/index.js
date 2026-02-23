@@ -1073,6 +1073,11 @@ function btype(b)
 		case 34: return "ESP32-S3";
 		case 5:
 		case 35: return "ESP32-C3";
+		case 39: return "ESP32-C6";
+		case 40: return "ESP32-C61";
+		case 41: return "ESP32-C5";
+		case 42:
+		case 43: return "ESP32-P4";
 		case 1:
 		case 82: return "ESP8266";
 	}
@@ -3430,8 +3435,8 @@ function reportUpgradeEvent(info, oldVersion) {
 			};
 
 			// Add optional fields if available
-			if (infoData.psramPresent !== undefined) upgradeData.psramPresent = infoData.psramPresent;  // Whether device has PSRAM
-			if (infoData.psramSize !== undefined) upgradeData.psramSize = infoData.psramSize;  // Total PSRAM size in MB
+			if (infoData.psrSz !== undefined) upgradeData.psramSize = infoData.psrSz;  // Total PSRAM size in MB; can be 0
+
 			// Note: partitionSizes not currently available in /json/info endpoint
 
 			// Make AJAX call to postUpgradeEvent API
