@@ -56,32 +56,37 @@ constexpr size_t FIXED_PALETTE_COUNT = DYNAMIC_PALETTE_COUNT + FASTLED_PALETTE_C
 
 #ifdef ESP8266
   #define WLED_MAX_DIGITAL_CHANNELS 3
+  #define WLED_MAX_RMT_CHANNELS 0           // ESP8266 does not have RMT nor I2S
+  #define WLED_MAX_I2S_CHANNELS 0
   #define WLED_MAX_ANALOG_CHANNELS 5
-  #define WLED_MIN_VIRTUAL_BUSSES 3         // no longer used for bus creation but used to distinguish S2/S3 in UI
+  #define WLED_PLATFORM_ID 0         // used in UI to distinguish ESP types, needs a proper fix!
 #else
   #if !defined(LEDC_CHANNEL_MAX) || !defined(LEDC_SPEED_MODE_MAX)
     #include "driver/ledc.h" // needed for analog/LEDC channel counts
   #endif
   #define WLED_MAX_ANALOG_CHANNELS (LEDC_CHANNEL_MAX*LEDC_SPEED_MODE_MAX)
   #if defined(CONFIG_IDF_TARGET_ESP32C3)    // 2 RMT, 6 LEDC, only has 1 I2S but NPB does not support it ATM
-    #define WLED_MAX_DIGITAL_CHANNELS 2
+    #define WLED_MAX_RMT_CHANNELS 2         // ESP32-C3 has 2 RMT output channels
+    #define WLED_MAX_I2S_CHANNELS 0         // I2S not supported by NPB
     //#define WLED_MAX_ANALOG_CHANNELS 6
-    #define WLED_MIN_VIRTUAL_BUSSES 4       // no longer used for bus creation but used to distinguish S2/S3 in UI
+    #define WLED_PLATFORM_ID 1       // used in UI to distinguish ESP types, needs a proper fix!
   #elif defined(CONFIG_IDF_TARGET_ESP32S2)  // 4 RMT, 8 LEDC, only has 1 I2S bus, supported in NPB
-    // the 5th bus (I2S) will prevent Audioreactive usermod from functioning (it is last used though)
-    #define WLED_MAX_DIGITAL_CHANNELS 12    // x4 RMT + x1/x8 I2S0
+    #define WLED_MAX_RMT_CHANNELS 4         // ESP32-S2 has 4 RMT output channels
+    #define WLED_MAX_I2S_CHANNELS 8         // I2S parallel output supported by NPB
     //#define WLED_MAX_ANALOG_CHANNELS 8
-    #define WLED_MIN_VIRTUAL_BUSSES 4       // no longer used for bus creation but used to distinguish S2/S3 in UI
+    #define WLED_PLATFORM_ID 2       // used in UI to distinguish ESP type in UI
   #elif defined(CONFIG_IDF_TARGET_ESP32S3)  // 4 RMT, 8 LEDC, has 2 I2S but NPB supports parallel x8 LCD on I2S1
-    #define WLED_MAX_DIGITAL_CHANNELS 12    // x4 RMT + x8 I2S-LCD
+    #define WLED_MAX_RMT_CHANNELS 4         // ESP32-S3 has 4 RMT output channels
+    #define WLED_MAX_I2S_CHANNELS 8         // uses LCD parallel output not I2S
     //#define WLED_MAX_ANALOG_CHANNELS 8
-    #define WLED_MIN_VIRTUAL_BUSSES 6       // no longer used for bus creation but used to distinguish S2/S3 in UI
+    #define WLED_PLATFORM_ID 3       // used in UI to distinguish ESP type in UI, needs a proper fix!
   #else
-    // the last digital bus (I2S0) will prevent Audioreactive usermod from functioning
-    #define WLED_MAX_DIGITAL_CHANNELS 16    // x1/x8 I2S1 + x8 RMT
+    #define WLED_MAX_RMT_CHANNELS 8         // ESP32 has 8 RMT output channels
+    #define WLED_MAX_I2S_CHANNELS 8         // I2S parallel output supported by NPB
     //#define WLED_MAX_ANALOG_CHANNELS 16
-    #define WLED_MIN_VIRTUAL_BUSSES 6       // no longer used for bus creation but used to distinguish S2/S3 in UI
+    #define WLED_PLATFORM_ID 4       // used in UI to distinguish ESP type in UI, needs a proper fix!
   #endif
+  #define WLED_MAX_DIGITAL_CHANNELS (WLED_MAX_RMT_CHANNELS + WLED_MAX_I2S_CHANNELS)
 #endif
 // WLED_MAX_BUSSES was used to define the size of busses[] array which is no longer needed
 // instead it will help determine max number of buses that can be defined at compile time
@@ -113,6 +118,8 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
     #define WLED_MAX_BUTTONS 2
   #endif
 #endif
+
+#define RELAY_DELAY 50 // delay in ms between switching on relay and sending data to LEDs
 
 #if defined(ESP8266) || defined(CONFIG_IDF_TARGET_ESP32S2)
 #define WLED_MAX_COLOR_ORDER_MAPPINGS 5
@@ -209,6 +216,12 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define USERMOD_ID_BRIGHTNESS_FOLLOW_SUN 57     //Usermod "usermod_v2_brightness_follow_sun.h"
 #define USERMOD_ID_USER_FX               58     //Usermod "user_fx"
 
+//Wifi encryption type
+#ifdef WLED_ENABLE_WPA_ENTERPRISE
+  #define WIFI_ENCRYPTION_TYPE_PSK          0     //None/WPA/WPA2
+  #define WIFI_ENCRYPTION_TYPE_ENTERPRISE   1     //WPA/WPA2-Enterprise
+#endif
+
 //Access point behavior
 #define AP_BEHAVIOR_BOOT_NO_CONN          0     //Open AP when no connection after boot
 #define AP_BEHAVIOR_NO_CONN               1     //Open when no connection (either after boot or if connection is lost)
@@ -300,7 +313,7 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define TYPE_UCS8903             26
 #define TYPE_APA106              27
 #define TYPE_FW1906              28            //RGB + CW + WW + unused channel (6 channels per IC)
-#define TYPE_UCS8904             29            //first RGBW digital type (hardcoded in busmanager.cpp, memUsage())
+#define TYPE_UCS8904             29            //first RGBW digital type (hardcoded in busmanager.cpp)
 #define TYPE_SK6812_RGBW         30
 #define TYPE_TM1814              31
 #define TYPE_WS2805              32            //RGB + WW + CW
@@ -486,6 +499,8 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define SUBPAGE_UM                8
 #define SUBPAGE_UPDATE            9
 #define SUBPAGE_2D               10
+#define SUBPAGE_PINS             11
+#define SUBPAGE_LAST             SUBPAGE_PINS
 #define SUBPAGE_LOCK            251
 #define SUBPAGE_PINREQ          252
 #define SUBPAGE_CSS             253
@@ -501,23 +516,28 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
     #define MAX_LEDS 1536 //can't rely on memory limit to limit this to 1536 LEDs
   #elif defined(CONFIG_IDF_TARGET_ESP32S2)
     #define MAX_LEDS 2048 //due to memory constraints S2
-  #elif defined(CONFIG_IDF_TARGET_ESP32C3)
-    #define MAX_LEDS 4096
   #else
     #define MAX_LEDS 16384
   #endif
 #endif
 
+// maximum total memory that can be used for bus-buffers and pixel buffers
 #ifndef MAX_LED_MEMORY
   #ifdef ESP8266
-    #define MAX_LED_MEMORY 4096
+    #define MAX_LED_MEMORY (8*1024)
   #else
-    #if defined(ARDUINO_ARCH_ESP32S2)
-      #define MAX_LED_MEMORY 16384
-    #elif defined(ARDUINO_ARCH_ESP32C3)
-      #define MAX_LED_MEMORY 32768
+    #if defined(CONFIG_IDF_TARGET_ESP32S2)
+      #ifndef BOARD_HAS_PSRAM
+        #define MAX_LED_MEMORY (28*1024)  // S2 has ~170k of free heap after boot, using 28k is the absolute limit to keep WLED functional
+      #else
+        #define MAX_LED_MEMORY (48*1024)  // with PSRAM there is more wiggle room as buffers get moved to PSRAM when needed (prioritize functionality over speed)
+      #endif
+    #elif defined(CONFIG_IDF_TARGET_ESP32S3)
+      #define MAX_LED_MEMORY (192*1024) // S3 has ~330k of free heap after boot
+    #elif defined(CONFIG_IDF_TARGET_ESP32C3)
+      #define MAX_LED_MEMORY (100*1024) // C3 has ~240k of free heap after boot, even with 8000 LEDs configured (2D) there is 30k of contiguous heap left
     #else
-      #define MAX_LED_MEMORY 65536
+      #define MAX_LED_MEMORY (85*1024) // ESP32 has ~160k of free heap after boot and an additional 64k of 32bit access memory that is used for pixel buffers
     #endif
   #endif
 #endif
@@ -582,7 +602,7 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #ifdef ESP8266
   #define JSON_BUFFER_SIZE 10240
 #else
-  #if defined(ARDUINO_ARCH_ESP32S2)
+  #if defined(CONFIG_IDF_TARGET_ESP32S2)
     #define JSON_BUFFER_SIZE 24576
   #else
     #define JSON_BUFFER_SIZE 32767

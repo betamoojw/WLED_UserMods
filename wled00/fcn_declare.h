@@ -20,6 +20,7 @@ void longPressAction(uint8_t b=0);
 void doublePressAction(uint8_t b=0);
 bool isButtonPressed(uint8_t b=0);
 void handleButton();
+void handleOnOff(bool forceOff = false);
 void handleIO();
 void IRAM_ATTR touchButtonISR();
 
@@ -63,13 +64,26 @@ typedef struct WiFiConfig {
   IPAddress staticIP;
   IPAddress staticGW;
   IPAddress staticSN;
+#ifdef WLED_ENABLE_WPA_ENTERPRISE
+  byte encryptionType;
+  char enterpriseAnonIdentity[65];
+  char enterpriseIdentity[65];
+  WiFiConfig(const char *ssid="", const char *pass="", uint32_t ip=0, uint32_t gw=0, uint32_t subnet=0x00FFFFFF // little endian
+    , byte enc_type=WIFI_ENCRYPTION_TYPE_PSK, const char *ent_anon="", const char *ent_iden="")
+#else
   WiFiConfig(const char *ssid="", const char *pass="", uint32_t ip=0, uint32_t gw=0, uint32_t subnet=0x00FFFFFF) // little endian
+#endif
   : staticIP(ip)
   , staticGW(gw)
   , staticSN(subnet)
   {
     strncpy(clientSSID, ssid, 32); clientSSID[32] = 0;
     strncpy(clientPass, pass, 64); clientPass[64] = 0;
+#ifdef WLED_ENABLE_WPA_ENTERPRISE
+    encryptionType = enc_type;
+    strncpy(enterpriseAnonIdentity, ent_anon, 64); enterpriseAnonIdentity[64] = 0;
+    strncpy(enterpriseIdentity, ent_iden, 64); enterpriseIdentity[64] = 0;
+#endif
     memset(bssid, 0, sizeof(bssid));
   }
 } wifi_config;
@@ -85,9 +99,9 @@ void handleDMXInput();
 //e131.cpp
 void handleE131Packet(e131_packet_t* p, IPAddress clientIP, byte protocol);
 void handleDMXData(uint16_t uni, uint16_t dmxChannels, uint8_t* e131_data, uint8_t mde, uint8_t previousUniverses);
-void handleArtnetPollReply(IPAddress ipAddress);
-void prepareArtnetPollReply(ArtPollReply* reply);
-void sendArtnetPollReply(ArtPollReply* reply, IPAddress ipAddress, uint16_t portAddress);
+// void handleArtnetPollReply(IPAddress ipAddress);                                          // local function, only used in e131.cpp
+// void prepareArtnetPollReply(ArtPollReply* reply);                                         // local function, only used in e131.cpp
+// void sendArtnetPollReply(ArtPollReply* reply, IPAddress ipAddress, uint16_t portAddress); // local function, only used in e131.cpp
 
 //file.cpp
 bool handleFileRead(AsyncWebServerRequest*, String path);
@@ -160,6 +174,7 @@ void serializeState(JsonObject root, bool forPreset = false, bool includeBri = t
 void serializeInfo(JsonObject root);
 void serializeModeNames(JsonArray arr);
 void serializeModeData(JsonArray fxdata);
+void serializePins(JsonObject root);
 void serveJson(AsyncWebServerRequest* request);
 #ifdef WLED_ENABLE_JSONLIVE
 bool serveLiveLeds(AsyncWebServerRequest* request, uint32_t wsClient = 0);
@@ -193,8 +208,8 @@ void publishMqtt();
 //ntp.cpp
 void handleTime();
 void handleNetworkTime();
-void sendNTPPacket();
-bool checkNTPResponse();
+// void sendNTPPacket();    // local function, only used in ntp.cpp
+// bool checkNTPResponse(); // local function, only used in ntp.cpp
 void updateLocalTime();
 void getTimeString(char* out);
 bool checkCountdown();
@@ -207,8 +222,8 @@ void setTimeFromAPI(uint32_t timein);
 
 //overlay.cpp
 void handleOverlayDraw();
-void _overlayAnalogCountdown();
-void _overlayAnalogClock();
+// void _overlayAnalogCountdown();  // local function, only used in overlay.cpp
+// void _overlayAnalogClock();      // local function, only used in overlay.cpp
 
 //playlist.cpp
 void shufflePlaylist();
