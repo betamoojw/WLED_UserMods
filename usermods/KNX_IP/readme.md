@@ -1,5 +1,12 @@
 # KNX IP Usermod
 
+## KNX TP + IP architecture/setup combination
+A KNX TP + IP architecture combines the traditional twisted-pair field bus (KNX TP) and KNX-IP device with an Ethernet/IP backbone. This is the most common architecture in large installations such as smart buildings, airports, and commercial facilities.
+
+![Screenshot of knx tp+ip architecture](assets/knx_tp+ip_architecture.png)
+
+## KNX IP Overview
+
 This usermod enables KNX/EIB integration for WLED, allowing control of LED strips and segments via KNX bus communication.
 
 ![Screenshot of WLED info knx ip without device key page](assets/screenshot_info_knx_ip_without_device_key.png)
