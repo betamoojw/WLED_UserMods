@@ -235,7 +235,7 @@ void UsermodTemperature::addToJsonInfo(JsonObject& root) {
 
   if (temperature <= -100.0f) {
     temp.add(0);
-    temp.add(F(" Sensor Error!"));
+    temp.add(F(" Sensor Error!"));  
     return;
   }
 

@@ -454,6 +454,9 @@ void checkSettingsPIN(const char *pin);
 uint16_t crc16(const unsigned char* data_p, size_t length);
 String computeSHA1(const String& input);
 String getDeviceId();
+String getDeviceKey();
+int8_t validateDeviceKey();
+
 uint16_t beat88(uint16_t beats_per_minute_88, uint32_t timebase = 0);
 uint16_t beat16(uint16_t beats_per_minute, uint32_t timebase = 0);
 uint8_t beat8(uint16_t beats_per_minute, uint32_t timebase = 0);

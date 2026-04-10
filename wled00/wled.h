@@ -7,7 +7,8 @@
  */
 
 // version code in format yymmddb (b = daily build)
-#define VERSION 2602141
+// #define VERSION 2602141
+#define VERSION 2603280
 
 //uncomment this if you have a "my_config.h" file you'd like to use
 //#define WLED_USE_MY_CONFIG
@@ -882,6 +883,7 @@ WLED_GLOBAL bool doCloseFile _INIT(false);
 WLED_GLOBAL byte currentPreset _INIT(0);
 
 WLED_GLOBAL byte errorFlag _INIT(0);
+WLED_GLOBAL char errorDetails[256] _INIT({0}); // Additional error details for specific errors
 
 WLED_GLOBAL String messageHead, messageSub;
 WLED_GLOBAL byte optionType;
