@@ -1,5 +1,6 @@
 #include "wled.h"
 
+
 #define JSON_PATH_STATE      1
 #define JSON_PATH_INFO       2
 #define JSON_PATH_STATE_INFO 3
@@ -974,7 +975,7 @@ void serializePalettes(JsonObject root, int page)
     JsonArray curPalette = palettes.createNestedArray(String(i >= palettesCount ? 255 - i + palettesCount : i));
     switch (i) {
       case 0: //default palette
-        setPaletteColors(curPalette, PartyColors_gc22);
+        setPaletteColors(curPalette, PartyColors_p);
         break;
       case 1: //random
            for (int j = 0; j < 4; j++) curPalette.add("r");

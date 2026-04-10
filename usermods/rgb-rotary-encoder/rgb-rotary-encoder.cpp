@@ -34,7 +34,6 @@ class RgbRotaryEncoderUsermod : public Usermod
     byte currentColors[3];
     byte lastKnownBri = 0;
 
-    inline uint32_t colorFromRgb(byte* rgb) { return uint32_t((byte(rgb[0]) << 16) | (byte(rgb[1]) << 8) | (byte(rgb[2]))); }
 
     void initRotaryEncoder()
     {
@@ -80,7 +79,7 @@ class RgbRotaryEncoderUsermod : public Usermod
             for (int i = 0; i < currentPos / incrementPerClick - 1; i++) {
               ledBus->setPixelColor(i, 0);
             }
-            ledBus->setPixelColor(currentPos / incrementPerClick - 1, colorFromRgb(currentColors));
+            ledBus->setPixelColor(currentPos / incrementPerClick - 1, colorFromRgbw(currentColors));
             for (int i = currentPos / incrementPerClick; i < numLeds; i++) {
               ledBus->setPixelColor(i, 0);
             }
@@ -96,7 +95,7 @@ class RgbRotaryEncoderUsermod : public Usermod
             if (ledMode == 3) {
               hsv2rgb((i) / float(numLeds), 1, .25);
             }
-            ledBus->setPixelColor(i, colorFromRgb(currentColors));
+            ledBus->setPixelColor(i, colorFromRgbw(currentColors));
           }
           for (int i = currentPos / incrementPerClick; i < numLeds; i++) {
             ledBus->setPixelColor(i, 0);

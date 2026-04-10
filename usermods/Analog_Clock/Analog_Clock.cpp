@@ -115,7 +115,7 @@ private:
         );
     }
 
-    static inline uint32_t scale32(uint32_t c, uint8_t scale) {
+    static inline uint32_t scale32(uint32_t c, fract8 scale) {
         return RGBW32(
             scale8(R(c), scale),
             scale8(G(c), scale),
