@@ -456,6 +456,7 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define ERR_OVERTEMP    30  // An attached temperature sensor has measured above threshold temperature (not implemented)
 #define ERR_OVERCURRENT 31  // An attached current sensor has measured a current above the threshold (not implemented)
 #define ERR_UNDERVOLT   32  // An attached voltmeter has measured a voltage below the threshold (not implemented)
+#define ERR_KNX_GA_CONFLICT 33  // KNX Group Address conflict detected (duplicate GAs)
 
 // JSON buffer lock owners
 #define JSON_LOCK_UNKNOWN        255
