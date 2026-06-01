@@ -1296,6 +1296,9 @@ String computeSHA1(const String& input) {
 
 #ifdef ESP32
 #include "esp_adc_cal.h"
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,4,7) // backwards compatibility patch
+  #define ADC_ATTEN_DB_12 ADC_ATTEN_DB_11
+#endif
 String generateDeviceFingerprint() {
   uint32_t fp[2] = {0, 0}; // create 64 bit fingerprint
   esp_chip_info_t chip_info;
@@ -1310,8 +1313,7 @@ String generateDeviceFingerprint() {
   #else
   constexpr auto myBIT_WIDTH = ADC_WIDTH_BIT_12;
   #endif
-  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, myBIT_WIDTH, 1100, &ch);
-  // esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, myBIT_WIDTH, 1100, &ch);
+  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, myBIT_WIDTH, 1100, &ch);
   fp[0] ^= ch.coeff_a;
   fp[1] ^= ch.coeff_b;
   if (ch.low_curve) {
