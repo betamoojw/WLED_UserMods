@@ -2307,7 +2307,7 @@ void KnxIpUsermod::setup() {
 
 #ifdef ARDUINO_ARCH_ESP32
   if (Network.isEthernet()) {
-    // For Ethernet, we don't need to disable WiFi sleep
+    // Ethernet does not need the Wi-Fi sleep workaround used for multicast stability.
     KNX_UM_DEBUGLN("[KNX-UM] Using Ethernet connection");
   } else {
     WiFi.setSleep(false);     // modem-sleep off helps WiFi multicast reliability
@@ -2315,7 +2315,7 @@ void KnxIpUsermod::setup() {
     
     delay(100);  // Give lwIP time to complete initialization
     
-    // Verify WiFi is still connected after delay
+    // Verify the Wi-Fi link is still up after the stabilization delay.
     if (WiFi.status() != WL_CONNECTED) {
       KNX_UM_DEBUGLN("[KNX-UM] WiFi disconnected during lwIP wait, deferring KNX.begin().");
       return;
@@ -2622,7 +2622,7 @@ if (s_lcChangedAt && (millis() - s_lcChangedAt >= 300)) {
       if (ip && ip.toString() != String("0.0.0.0")) {
         KNX_UM_DEBUGLN("[KNX-UM] Network ready (got IP). Retrying KNX.begin()...");
         
-        // Same lwIP safety as in setup() - prevent "Invalid mbox" crash
+        // Apply the same lwIP safety delay on the Wi-Fi path before retrying.
         #ifdef ARDUINO_ARCH_ESP32
         if (!Network.isEthernet()) {
           delay(100);  // Give lwIP time to stabilize
@@ -3100,7 +3100,7 @@ bool KnxIpUsermod::readFromConfig(JsonObject& root) {
     KNX_UM_DEBUGLN("[KNX-UM] Rebuild KNX registrations & socket (GA map changed or first enable).");
     KNX.end();
     KNX.clearRegistrations();                                      // drop old GA registry
-    setup();                                                       // re-register + begin() if Wi-Fi up :contentReference[oaicite:3]{index=3}
+    setup();                                                       // re-register + begin() if the active network is ready
     KNX.setCommunicationEnhancement(commEnhance, commResends, commResendGapMs, commRxDedupMs);
 
     if (KNX.running()) {
@@ -3121,7 +3121,7 @@ bool KnxIpUsermod::readFromConfig(JsonObject& root) {
       uint16_t primer = knxMakeGroupAddress(0,0,1);
       KNX.groupValueRead(primer);
     } else {
-      // Enabled but not running yet (e.g., Wi-Fi not ready) → try to start
+      // Enabled but not running yet (e.g., no usable network IP yet) -> try to start
       KNX.begin();                                                 // joins multicast, sets TTL/LOOP/IF
     }
   }

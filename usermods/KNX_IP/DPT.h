@@ -1,5 +1,5 @@
 /**
- * esp-knx-ip library for KNX/IP communication on an ESP8266
+ * esp-knx-ip KNX DPT definitions used by the ESP32 KNX/IP usermod
  * Author: Nico Weichbrodt <envy>
  * License: MIT
  */

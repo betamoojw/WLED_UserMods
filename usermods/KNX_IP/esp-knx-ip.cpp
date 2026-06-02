@@ -157,7 +157,7 @@ if (::setsockopt(_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
 uint8_t ttl = 1;  (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_TTL,  &ttl,  sizeof(ttl));
 uint8_t loop = 1; (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
 
-// Pin outgoing multicast to the STA interface
+// Pin outgoing multicast to the active network interface
   if (::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_IF, &ifaddr, sizeof(ifaddr)) < 0) {
     KNX_UDP_LOG("ERROR: IP_MULTICAST_IF failed errno=%d", errno);
     KNX_LOG("begin(): IP_MULTICAST_IF failed errno=%d", errno);
@@ -219,7 +219,7 @@ bool KnxIpCore::rejoinMulticast() {
   uint8_t loop = 1; (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
  
 
-  // Pin outgoing multicast to Wi-Fi STA again (some drivers reset on config changes)
+  // Pin outgoing multicast to the current active interface again.
   if (::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_IF, &ifaddr, sizeof(ifaddr)) < 0) {
     KNX_LOG("rejoinMulticast(): IP_MULTICAST_IF failed errno=%d", errno);
     // not fatal – continue

@@ -155,8 +155,9 @@ public:
   KnxIpCore();
   ~KnxIpCore() = default;
 
-  // Initialize UDP multicast receiver/sender
-  // You must have WiFi connected already.
+  // Initialize UDP multicast receiver/sender.
+  // Requires an active network interface with a valid IP address via WLED's
+  // network layer, whether that link is Wi-Fi or Ethernet.
   bool begin();
 
   // Poll for incoming KNXnet/IP frames; call frequently from loop()
