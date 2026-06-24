@@ -477,6 +477,7 @@ static_assert(WLED_MAX_BUSSES <= 32, "WLED_MAX_BUSSES exceeds hard limit");
 #define ERR_LOW_WS_MEM  35  // low memory (ws)
 //#define ERR_LOW_AJAX_MEM 36 // (not used any more) low memory (oappend)
 #define ERR_LOW_BUF     37  // low memory (LED pixels buffer)
+#define ERR_KNX_GA_CONFLICT 89  // KNX Group Address conflict detected (duplicate GAs)
 #define ERR_SYS_REBOOT      90  // reboot after error, trying to roll back
 #define ERR_SYS_BROWNOUT    91  // reboot after brownout alert
 #define ERR_PERSISTENT_THRESHOLD 100 // ToDO: errors below this value are non-persistent; persistent errors stay in the UI until restart
