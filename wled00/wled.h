@@ -770,6 +770,7 @@ WLED_GLOBAL bool doCloseFile _INIT(false);
 WLED_GLOBAL byte currentPreset _INIT(0);
 
 WLED_GLOBAL byte errorFlag _INIT(0);
+WLED_GLOBAL char errorDetails[256] _INIT({0}); // Additional error details for specific errors
 
 // messageHead/messageSub/optionType are private to wled_server.cpp - see there.
 
