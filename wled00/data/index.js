@@ -28,6 +28,7 @@ var lastinfo = {};
 var isM = false, mw = 0, mh=0;
 var bsOpts = null; // blending style options snapshot, used for dynamic filtering based on matrix mode (iOS compatibility)
 var ws, wsRpt=0;
+var _selFxInterval = null; // interval ID for selected effect position update
 var cfg = {
 	theme:{base:"dark", bg:{url:"", rnd: false, rndGrayscale: false, rndBlur: false}, alpha:{bg:0.6,tab:0.8}, color:{bg:""}},
 	comp :{colors:{picker: true, rgb: false, quick: true, hex: false},
@@ -731,6 +732,7 @@ ${currentError ? '<tr><td colspan=2><hr style="height:1px;border-width:0;color:g
 ${i.opt&0x100?inforow("Debug","<button class=\"btn btn-xs\" onclick=\"requestJson({'debug':"+(i.opt&0x0080?"false":"true")+"});\"><i class=\"icons "+(i.opt&0x0080?"on":"off")+"\">&#xe08f;</i></button>"):''}
 ${inforow("Build",i.vid)}
 ${inforow("Signal strength",i.wifi.signal +"% ("+ i.wifi.rssi, " dBm)")}
+${i.wifi.band?inforow("WiFi band",i.wifi.band + " (Ch " + i.wifi.channel + ")"):""}
 ${inforow("Uptime",getRuntimeStr(i.uptime))}
 ${inforow("Time",i.time)}
 ${inforow("Free heap",(i.freeheap/1024).toFixed(1)," kB")}
@@ -1609,6 +1611,7 @@ function readState(s,command=false)
 				errstr = "Please switch your device off and back on.";
 		  break;
 		}
+		// showToast(((s.error<100) ? 'Error ': 'Note ') + s.error + ": " + errstr, true);  // show "please restart" as a note, all others as errors
 
 		// Use detailed error message if available, otherwise use the standard error string
 		if (s.error_msg && s.error_msg.length > 0) {
@@ -1622,7 +1625,9 @@ function readState(s,command=false)
 		// Update Info panel if it's currently active
 		if (isInfo && lastinfo) populateInfo(lastinfo);
 		
-		showToast('Error ' + s.error + ": " + errstr, true);
+		// showToast('Error ' + s.error + ": " + errstr, true);
+    showToast(((s.error<100) ? 'Error ': 'Note ') + s.error + ": " + errstr, true);  // show "please restart" as a note, all others as errors
+    
 	} else {
 		// Clear error state when no error
 		var hadError = currentError !== null;
@@ -1707,7 +1712,8 @@ function setEffectParameters(idx)
 	}
 
 	setSelectedEffectPosition();
-	setInterval(setSelectedEffectPosition,750);
+	if (_selFxInterval) clearInterval(_selFxInterval);
+	_selFxInterval = setInterval(setSelectedEffectPosition,750);
 	// set html color items on/off
 	var cslLabel = '';
 	var sep = '';
@@ -2880,14 +2886,7 @@ function rSegs()
 	cnfrS = false;
 	bt.style.color = "var(--c-f)";
 	bt.innerHTML = "Reset segments";
-	var obj = {"seg":[{"start":0,"stop":ledCount,"sel":true}]};
-	if (isM) {
-		obj.seg[0].stop = mw;
-		obj.seg[0].startX = 0;
-		obj.seg[0].stopY = mh;
-	}
-	for (let i=1; i<=lSeg; i++) obj.seg.push({"stop":0});
-	requestJson(obj);
+	requestJson({"rSeg": true}); // send reset segment request, calls makeAutoSegments() in firmware
 }
 
 function loadPalettesData() {
