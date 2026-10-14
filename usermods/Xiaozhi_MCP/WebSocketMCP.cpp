@@ -8,6 +8,7 @@ const int WebSocketMCP::INITIAL_BACKOFF;
 const int WebSocketMCP::MAX_BACKOFF;
 const int WebSocketMCP::PING_INTERVAL;
 const int WebSocketMCP::DISCONNECT_TIMEOUT;
+const uint8_t WebSocketMCP::DISCONNECT_TIMEOUT_COUNT;
 
 WebSocketMCP::WebSocketMCP() : connected(false), lastReconnectAttempt(0), 
                               currentBackoff(INITIAL_BACKOFF), reconnectAttempt(0) {
@@ -60,9 +61,9 @@ bool WebSocketMCP::begin(const char *mcpEndpoint,  ConnectionCallback connCb) {
     webSocket.begin(host.c_str(), port, path.c_str());
   }
   
-  // 设置断开连接超时为60秒
-  // webSocket.setReconnectInterval(DISCONNECT_TIMEOUT);
-  webSocket.enableHeartbeat(PING_INTERVAL, PING_INTERVAL, DISCONNECT_TIMEOUT);
+  // 设置断开连接超时约为60秒
+  webSocket.setReconnectInterval(DISCONNECT_TIMEOUT);
+  webSocket.enableHeartbeat(PING_INTERVAL, PONG_INTERVAL, DISCONNECT_TIMEOUT_COUNT);
   
   // 注册事件回调
   webSocket.onEvent(webSocketEvent);

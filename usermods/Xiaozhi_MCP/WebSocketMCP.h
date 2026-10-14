@@ -213,6 +213,7 @@ public:
    * 注意：连接会使用以下超时设置：
    * - PING_INTERVAL: 心跳ping间隔，默认为45秒
    * - DISCONNECT_TIMEOUT: 断开连接超时，默认为60秒
+   * - DISCONNECT_TIMEOUT_COUNT: 心跳超时次数，默认为6次
    * - INITIAL_BACKOFF: 初始重连等待时间，默认为1秒
    * - MAX_BACKOFF: 最大重连等待时间，默认为60秒
    */
@@ -270,7 +271,9 @@ private:
   static const int INITIAL_BACKOFF = 1000; // 初始等待时间(毫秒)
   static const int MAX_BACKOFF = 60000;    // 最大等待时间(毫秒)
   static const int PING_INTERVAL = 10000;  // ping发送间隔(毫秒)
+  static const int PONG_INTERVAL = 10000;  // pong发送间隔(毫秒)
   static const int DISCONNECT_TIMEOUT = 60000; // 断开连接超时(毫秒)
+  static const uint8_t DISCONNECT_TIMEOUT_COUNT = 6; // 连续心跳超时次数
   int currentBackoff;
   int reconnectAttempt;
 

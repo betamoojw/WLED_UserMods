@@ -32,13 +32,13 @@ void Xiaozhi_MCP::setup()
   }
 
   // Check network connectivity
-  if (!Network.isConnected())
+  if (!WLEDNetwork.isConnected())
   {
     MCP_UM_DEBUGLN("[MCP-UM] Network not connected, deferring MCP.begin().");
     return;
   }
 
-  IPAddress ip = Network.localIP();
+  IPAddress ip = WLEDNetwork.localIP();
   if (!ip || ip.toString() == String("0.0.0.0"))
   {
     MCP_UM_DEBUGLN("[MCP-UM] Network connected but no IP yet, deferring MCP.begin().");
@@ -46,7 +46,7 @@ void Xiaozhi_MCP::setup()
   }
 
 #ifdef ARDUINO_ARCH_ESP32
-  if (Network.isEthernet())
+  if (WLEDNetwork.isEthernet())
   {
     // For Ethernet, we don't need to disable WiFi sleep
     MCP_UM_DEBUGLN("[MCP-UM] Using Ethernet connection");
@@ -104,7 +104,7 @@ void Xiaozhi_MCP::loop()
     MCP_UM_DEBUGLN("[MCP-UM] 1-min task triggered\n");
 
     // Check network connectivity and attempt setup if not done
-    if (Network.isConnected() && !isSetupDone)
+    if (WLEDNetwork.isConnected() && !isSetupDone)
     {
       setup();
     }
