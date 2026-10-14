@@ -38,9 +38,9 @@ void sendUdpDebug(const char* fmt, ...) { (void)fmt; }
 class KnxNetworkInterface {
 public:
 #ifndef UNIT_TEST
-    static IPAddress localIP() { return Network.localIP(); }
-    static void localMAC(uint8_t* mac) { Network.localMAC(mac); }
-    static bool isConnected() { return Network.isConnected(); }
+    static IPAddress localIP() { return WLEDNetwork.localIP(); }
+    static void localMAC(uint8_t* mac) { WLEDNetwork.localMAC(mac); }
+    static bool isConnected() { return WLEDNetwork.isConnected(); }
 #else
     static IPAddress localIP() { return WiFi.localIP(); }
     static void localMAC(uint8_t* mac) { WiFi.macAddress(mac); }
