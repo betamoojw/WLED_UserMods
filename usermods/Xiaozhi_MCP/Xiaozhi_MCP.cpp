@@ -90,6 +90,11 @@ void Xiaozhi_MCP::loop()
 {
   if (!isEnabled)
   {
+    // The transport worker continues independently of loop(), so stop it explicitly.
+    if (isSetupDone) {
+      mcpClient.end();
+      isSetupDone = false;
+    }
     return;
   }
 
@@ -143,17 +148,20 @@ void Xiaozhi_MCP::addToJsonInfo(JsonObject &root)
   JsonArray mcpStatus = user.createNestedArray("MCP Service Status");
   if (mcpClient.isConnected())
   {
-    mcpStatus.add(F("connected"));
+    mcpStatus.add(F("Connected"));
     MCP_UM_DEBUGLN("[MCP-UM] MCP service is connected");
   }
   else
   {
-    mcpStatus.add(F("disconnected"));
+    mcpStatus.add(F("Disconnected"));
     MCP_UM_DEBUGLN("[MCP-UM] MCP service is not connected");
   }
 
+  // Keep the existing connected/disconnected status while explaining connection failures.
+  user.createNestedArray("MCP Connection Detail").add(mcpClient.getConnectionDetail());
   // Check MCP terminal alias status
   JsonArray mcpAlias = user.createNestedArray("MCP Terminal Alias");
+  
   mcpAlias.add(F(mcpTerminalAlias.c_str()));
 }
 
@@ -199,6 +207,7 @@ bool Xiaozhi_MCP::checkMcpConfig()
 
   MCP_UM_DEBUGF("[MCP-UM] Mode Name: '%s'\n", getName());
   MCP_UM_DEBUGF("[MCP-UM] MCP Endpoint: '%s'\n", mcpEndpoint.c_str());
+  MCP_UM_DEBUGLN("[MCP-UM] MCP endpoint configured");
 
   return true;
 }
@@ -250,7 +259,7 @@ static void registerMcpTools(const String &shortDeviceId, const String &alias)
 static void registerGetStatusTool(const String &shortDeviceId, const String &alias)
 {
   String name = String("led_status") + "_" + shortDeviceId;
-  String description = alias + " 状态";
+  String description = alias + " status";
   mcpClient.registerTool(
       name,
       description,
@@ -293,7 +302,7 @@ static void registerGetStatusTool(const String &shortDeviceId, const String &ali
 static void registerGetMcpAliasTool(const String &shortDeviceId, const String &alias)
 {
   String name = String("led_get_alias") + "_" + shortDeviceId;
-  String description = alias + " 获取别名";
+  String description = alias + " alias";
   mcpClient.registerTool(
       name,
       description,
@@ -312,7 +321,7 @@ static void registerGetMcpAliasTool(const String &shortDeviceId, const String &a
 static void registerPowerCtrlTool(const String &shortDeviceId, const String &alias)
 {
   String name = String("led_power") + "_" + shortDeviceId;
-  String description = alias + " 开关";
+  String description = alias + " power";
   mcpClient.registerTool(
       name,
       description,
@@ -344,7 +353,7 @@ static void registerPowerCtrlTool(const String &shortDeviceId, const String &ali
 static void registerBrightnessCtrlTool(const String &shortDeviceId, const String &alias)
 {
   String name = String("led_brightness") + "_" + shortDeviceId;
-  String description = alias + " 亮度";
+  String description = alias + " brightness";
   mcpClient.registerTool(
       name,
       description,
@@ -376,7 +385,7 @@ static void registerBrightnessCtrlTool(const String &shortDeviceId, const String
 static void registerColorCtrlTool(const String &shortDeviceId, const String &alias)
 {
   String name = String("led_color") + "_" + shortDeviceId;
-  String description = alias + " 颜色";
+  String description = alias + " color";
   mcpClient.registerTool(
       name,
       description,
@@ -428,7 +437,7 @@ static void registerColorCtrlTool(const String &shortDeviceId, const String &ali
 static void registerEffectCtrlTool(const String &shortDeviceId, const String &alias)
 {
   String name = String("led_effect") + "_" + shortDeviceId;
-  String description = alias + " 动画特效";
+  String description = alias + " effect";
   mcpClient.registerTool(
       name,
       description,

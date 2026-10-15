@@ -2,63 +2,56 @@
 #define WEBSOCKET_MCP_H
 
 #include "wled.h"
-#include <WebSocketsClient.h>
+#include <atomic>
 #include <functional>
 
 // Debug logging control: define XIAOZHI_MCP_DEBUG at build time to enable verbose logs
 #ifdef XIAOZHI_MCP_DEBUG
-#define XIAOZHI_MCP_DEBUGF(...) Serial.printf(__VA_ARGS__)
-#define XIAOZHI_MCP_DEBUGLN(msg) Serial.println(msg)
+#define XIAOZHI_MCP_DEBUGF(...) DEBUG_PRINTF(__VA_ARGS__)
+#define XIAOZHI_MCP_DEBUGLN(msg) DEBUG_PRINTLN(msg)
 #else
 #define XIAOZHI_MCP_DEBUGF(...)
 #define XIAOZHI_MCP_DEBUGLN(msg)
 #endif
 
-// Warning logging (always on unless explicitly suppressed)
+// Diagnostics follow WLED_DEBUG and can additionally be suppressed for this usermod.
 #ifndef XIAOZHI_MCP_SUPPRESS_WARN
-#define XIAOZHI_MCP_WARNF(...) Serial.printf(__VA_ARGS__)
-#define XIAOZHI_MCP_WARNLN(msg) Serial.println(msg)
+#define XIAOZHI_MCP_WARNF(...) DEBUG_PRINTF(__VA_ARGS__)
+#define XIAOZHI_MCP_WARNLN(msg) DEBUG_PRINTLN(msg)
 #else
 #define XIAOZHI_MCP_WARNF(...)
 #define XIAOZHI_MCP_WARNLN(msg)
 #endif
 
 /**
- * WebSocketMCP类
- * 封装了与MCP服务器的WebSocket连接及其通信
+ * WebSocketMCP class
+ * Encapsulates the WebSocket connection to the MCP server and its communication.
  */
 class WebSocketMCP {
 public:
-  // 定义工具响应内容结构
+  // Define the tool response content structure
   //Sending to WebSocket: {"jsonrpc":"2.0","id":48,"result":{"content":[{"type":"text","text":"{\n  \"success\": true,\n  \"result\": 2\n}"}],"isError":false}}
   struct ToolContentItem {
-    String type;  // 内容类型，如"text"
-    String text;  // 文本内容
+    String type;  // Content type, such as "text"
+    String text;  // Text content
   };
   
-  // 定义工具响应结构
+  // Define the tool response structure
   struct ToolResponse {
-    std::vector<ToolContentItem> content;  // 响应内容数组
-    bool isError;                          // 是否为错误响应
+    std::vector<ToolContentItem> content;  // Response content array
+    bool isError;                          // Whether this is an error response
     
-    // 构造函数：从单个文本内容创建响应
+    // Constructor: create a response from a single text content item
     ToolResponse(const String& textContent, bool error = false) {
       ToolContentItem item;
       item.type = "text";
       
-      // 尝试检测是否为JSON并格式化（通过查找开头的 { 和结尾的 }）
+      // Try to detect JSON and format it (by checking for a leading { and trailing })
       String trimmedText = textContent;
       trimmedText.trim();
       
       if (trimmedText.startsWith("{") && trimmedText.endsWith("}")) {
-        // 使用WebSocketMCP的formatJsonString方法格式化
-        // 由于这是一个静态方法内，我们需要创建一个临时实例来调用非静态方法
-        WebSocketMCP* instance = WebSocketMCP::instance;
-        if (instance) {
-          item.text = instance->formatJsonString(textContent);
-        } else {
-          item.text = textContent;
-        }
+        item.text = WebSocketMCP::formatJsonString(textContent);
       } else {
         item.text = textContent;
       }
@@ -67,7 +60,7 @@ public:
       isError = error;
     }
 
-    // 新增构造函数：用于处理 bool 和 String 类型的参数
+    // Additional constructor for bool and String parameter handling
     ToolResponse(bool error, const String& message) {
       ToolContentItem item;
       item.type = "text";
@@ -76,10 +69,10 @@ public:
       isError = error;
     }
     
-    // 默认构造函数
+    // Default constructor
     ToolResponse() : isError(false) {}
     
-    // 从JSON对象创建响应（便捷方法）
+    // Create a response from a JSON object (convenience method)
     static ToolResponse fromJson(const JsonObject& json, bool error = false) {
       String jsonStr;
       serializeJson(json, jsonStr);
@@ -87,7 +80,7 @@ public:
     }
   };
 
-  // 用于参数处理的辅助类
+  // Helper class for parameter handling
   class ToolParams {
   public:
     ToolParams(const String& json) {
@@ -189,122 +182,108 @@ public:
     bool valid = false;
   };
 
-  // 重新定义工具回调函数类型 - 接收JSON字符串参数，返回ToolResponse结构
-  typedef std::function<ToolResponse(const String&)> ToolCallback; // 更改为接收 ToolParams&
+  // Redefine the tool callback type - accepts a JSON string and returns a ToolResponse
+  typedef std::function<ToolResponse(const String&)> ToolCallback; // updated to accept ToolParams&
 
-  // 回调类型定义
-  // 输出回调：void(const String&)
+  // Callback type definitions
+  // Output callback: void(const String&)
   typedef void (*OutputCallback)(const String&);
-  // 错误回调：void(const String&)
+  // Error callback: void(const String&)
   typedef void (*ErrorCallback)(const String&);
-  // 连接状态回调：void(bool)
+  // Connection status callback: void(bool)
   typedef void (*ConnectionCallback)(bool);
 
   WebSocketMCP();
+  ~WebSocketMCP();
+  WebSocketMCP(const WebSocketMCP&) = delete;
+  WebSocketMCP& operator=(const WebSocketMCP&) = delete;
 
-  /**
-   * 初始化WebSocket连接
-   * @param mcpEndpoint WebSocket服务器地址(ws://host:port/path)
-   * @param outputCb 输出数据回调函数(相当于stdout)
-   * @param errorCb 错误消息回调函数(相当于stderr)
-   * @param connCb 连接状态变化回调函数
-   * @return 初始化是否成功
-   * 
-   * 注意：连接会使用以下超时设置：
-   * - PING_INTERVAL: 心跳ping间隔，默认为45秒
-   * - DISCONNECT_TIMEOUT: 断开连接超时，默认为60秒
-   * - DISCONNECT_TIMEOUT_COUNT: 心跳超时次数，默认为6次
-   * - INITIAL_BACKOFF: 初始重连等待时间，默认为1秒
-   * - MAX_BACKOFF: 最大重连等待时间，默认为60秒
-   */
+  // Call lifecycle, send, and tool APIs only from WLED's main loop task.
+  // Callbacks may call begin(), end(), or disconnect(); replacement starts after
+  // the retiring worker exits and loop() runs again.
+  // Start an outbound ws/wss client. WSS verifies the server using the IDF CA
+  // bundle through BearSSL and requires synchronized WLED time. Callbacks run from loop().
+  // Heartbeats: 10-second ping/pong intervals, six missed pongs before reconnect.
+  // Reconnect attempts are spaced 60 seconds apart, as in the previous transport.
   bool begin(const char *mcpEndpoint, ConnectionCallback connCb = nullptr);
 
   /**
-   * 发送数据到WebSocket服务器(相当于stdin)
-   * @param message 要发送的消息
-   * @return 发送是否成功
+   * Send data to the WebSocket server (equivalent to stdin)
+   * @param message The message to send
+   * @return Whether the send succeeded
    */
   bool sendMessage(const String &message);
 
   /**
-   * 处理WebSocket事件和保持连接
-   * 需要在主循环中频繁调用
+   * Process WebSocket events and maintain the connection
+   * This should be called frequently in the main loop
    */
   void loop();
 
   /**
-   * 是否已连接到服务器
-   * @return 连接状态
+   * Check whether the client is connected to the server
+   * @return Connection status
    */
   bool isConnected();
 
+  // Static diagnostic text, safe to read from the HTTP task without touching transport state.
+  const char *getConnectionDetail() const { return _connectionDetail.load(); }
+
   /**
-   * 断开连接
+   * Disconnect from the server
    */
   void disconnect();
 
+  // Stop the worker and automatic reconnection until begin() is called again.
+  void end();
+
   /**
-   * 设置日志级别和回调函数
-   * @param level 日志级别
-   * @param logCb 日志回调函数
+   * Set the log level and callbacks
+   * @param level Log level
+   * @param logCb Log callback
    */
 
-  // 工具注册和管理方法
+  // Tool registration and management methods
   bool registerTool(const String &name, const String &description, const String &inputSchema, ToolCallback callback);
-  // 简化工具注册API
+  // Simplified tool registration API
   bool registerSimpleTool(const String &name, const String &description, 
-                         const String &paramName, const String &paramDesc, 
-                         const String &paramType, ToolCallback callback);
+                          const String &paramName, const String &paramDesc, 
+                          const String &paramType, ToolCallback callback);
   
   bool unregisterTool(const String &name);
   size_t getToolCount();
   void clearTools();
 
 private:
-  WebSocketsClient webSocket;
-  ConnectionCallback connectionCallback;
-
-  bool connected;
-  unsigned long lastReconnectAttempt;
-
-  // 重连设置
-  static const int INITIAL_BACKOFF = 1000; // 初始等待时间(毫秒)
-  static const int MAX_BACKOFF = 60000;    // 最大等待时间(毫秒)
-  static const int PING_INTERVAL = 10000;  // ping发送间隔(毫秒)
-  static const int PONG_INTERVAL = 10000;  // pong发送间隔(毫秒)
-  static const int DISCONNECT_TIMEOUT = 60000; // 断开连接超时(毫秒)
-  static const uint8_t DISCONNECT_TIMEOUT_COUNT = 6; // 连续心跳超时次数
-  int currentBackoff;
-  int reconnectAttempt;
-
-  // WebSocket事件处理函数
-  static void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);
-  static WebSocketMCP *instance;
-
-  // 重连处理
-  void handleReconnect();
-  void resetReconnectParams();
-
-  // 新增成员
+  std::atomic<const char *> _connectionDetail{"Stopped"};
+  // The worker owns networking; loop() alone invokes callbacks and MCP tools.
+  struct Transport;
+  Transport *_transport = nullptr;
+  Transport *_retiring = nullptr;
+  void reapTransport();
+  ConnectionCallback connectionCallback = nullptr;
+  std::atomic<bool> connected{false};
+  uint32_t _session = 0;
   unsigned long lastPingTime = 0;
+  void stopTransport();
   void handleJsonRpcMessage(const String &message);
 
-  // 工具结构定义
+  // Tool structure definition
   struct Tool {
-    String name;           // 工具名称
-    String description;    // 工具描述 
-    String inputSchema;    // 工具输入schema(JSON格式)
-    ToolCallback callback; // 工具调用回调函数
+    String name;           // Tool name
+    String description;    // Tool description
+    String inputSchema;    // Tool input schema (JSON format)
+    ToolCallback callback; // Tool callback function
   };
 
-  // 工具列表
+  // Tool list
   std::vector<Tool> _tools;
 
-  // 辅助方法
+  // Helper methods
   String escapeJsonString(const String &input);
   
-  // 格式化JSON字符串，每个键值对占一行
-  String formatJsonString(const String &jsonStr);
+  // Format a JSON string so each key-value pair appears on its own line
+  static String formatJsonString(const String &jsonStr);
 };
 
 #endif // WEBSOCKET_MCP_H

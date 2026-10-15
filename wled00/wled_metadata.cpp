@@ -104,6 +104,9 @@ bool findWledMetadata(const uint8_t* binaryData, size_t dataSize, wled_metadata_
         wled_metadata_t candidate;
         memcpy(&candidate, binaryData + offset, sizeof(candidate));
 
+        // Uploaded labels must terminate inside their field before hashing or logging.
+        if (!memchr(candidate.release_name, '\0', sizeof(candidate.release_name))) continue;
+
         // Validate hash using runtime function
         uint32_t expected_hash = djb2_hash_runtime(candidate.release_name);
         if (candidate.hash != expected_hash) {
@@ -137,7 +140,8 @@ static inline String bufToString(const char (&buf)[len]) {
   char sbuf[len+1];
   size_t real_len = strnlen(buf, len);
   memcpy(sbuf, buf, real_len);
-  sbuf[len] = '\0';
+  // Terminate the copied name, excluding uninitialized bytes after short labels.
+  sbuf[real_len] = '\0';
   return sbuf;
 }
 
