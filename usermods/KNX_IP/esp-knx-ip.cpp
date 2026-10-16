@@ -14,7 +14,7 @@ static bool debugUdpInit = false;
 static void initUdpDebug() {
   if (debugUdpInit) return;
   debugTarget = IPAddress(255, 255, 255, 255); // Broadcast initially
-  debugUdp.begin(0); // Any available port
+  debugUdp.begin(0);                           // Any available port
   debugUdpInit = true;
 }
 
@@ -25,55 +25,57 @@ void sendUdpDebug(const char* fmt, ...) {
   va_start(args, fmt);
   vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
-  
+
   debugUdp.beginPacket(debugTarget, 5140); // Port 5140 for debug
   debugUdp.print(buf);
   debugUdp.endPacket();
 }
 #else
-void sendUdpDebug(const char* fmt, ...) { (void)fmt; }
+void sendUdpDebug(const char* fmt, ...) {
+  (void)fmt;
+}
 #endif
 
 // ======== Network abstraction for testing ========
 class KnxNetworkInterface {
 public:
 #ifndef UNIT_TEST
-    static IPAddress localIP() { return WLEDNetwork.localIP(); }
-    static void localMAC(uint8_t* mac) { WLEDNetwork.localMAC(mac); }
-    static bool isConnected() { return WLEDNetwork.isConnected(); }
+  static IPAddress localIP() { return WLEDNetwork.localIP(); }
+  static void localMAC(uint8_t* mac) { WLEDNetwork.localMAC(mac); }
+  static bool isConnected() { return WLEDNetwork.isConnected(); }
 #else
-    static IPAddress localIP() { return WiFi.localIP(); }
-    static void localMAC(uint8_t* mac) { WiFi.macAddress(mac); }
-    static bool isConnected() { return WiFi.status() == WL_CONNECTED; }
+  static IPAddress localIP() { return WiFi.localIP(); }
+  static void localMAC(uint8_t* mac) { WiFi.macAddress(mac); }
+  static bool isConnected() { return WiFi.status() == WL_CONNECTED; }
 #endif
 };
 
 // ======== Tunables / constants ========
-static constexpr uint8_t  KNX_PROTOCOL_VERSION    = 0x10;   // KNXnet/IP proto version
-static constexpr uint16_t KNX_SVC_ROUTING_IND     = 0x0530; // Routing Indication (rx)
-static constexpr uint8_t  CEMI_LDATA_IND          = 0x29;   // cEMI L_Data.ind (rx)
-static constexpr uint16_t KNX_SVC_SEARCH_REQ      = 0x0201; // SearchRequest
-static constexpr uint16_t KNX_SVC_SEARCH_RES      = 0x0202; // SearchResponse
-static constexpr uint16_t KNX_SVC_SEARCH_REQ_EXT  = 0x020B; // SearchRequestExtended
-static constexpr uint16_t KNX_SVC_SEARCH_RES_EXT  = 0x020C; // SearchResponseExtended
-
+static constexpr uint8_t KNX_PROTOCOL_VERSION = 0x10;      // KNXnet/IP proto version
+static constexpr uint16_t KNX_SVC_ROUTING_IND = 0x0530;    // Routing Indication (rx)
+static constexpr uint8_t CEMI_LDATA_IND = 0x29;            // cEMI L_Data.ind (rx)
+static constexpr uint16_t KNX_SVC_SEARCH_REQ = 0x0201;     // SearchRequest
+static constexpr uint16_t KNX_SVC_SEARCH_RES = 0x0202;     // SearchResponse
+static constexpr uint16_t KNX_SVC_SEARCH_REQ_EXT = 0x020B; // SearchRequestExtended
+static constexpr uint16_t KNX_SVC_SEARCH_RES_EXT = 0x020C; // SearchResponseExtended
 
 // cEMI Control fields defaults:
 //  - Standard frame, no repeat suppression, priority=Low
 //  - Group Address, hop count 6 (typical), ACK disabled
-static constexpr uint8_t  CEMI_CTRL1_DEFAULT   = 0xBC;   // std frame, low prio
-static constexpr uint8_t  CEMI_CTRL2_GROUP_HC6 = 0xE0;   // 1xxxxxxx (group) + hop=6
+static constexpr uint8_t CEMI_CTRL1_DEFAULT = 0xBC;   // std frame, low prio
+static constexpr uint8_t CEMI_CTRL2_GROUP_HC6 = 0xE0; // 1xxxxxxx (group) + hop=6
 
 // KNX UDP RX buffer (routing frames are small; 512 is plenty)
-static constexpr size_t   UDP_BUF_SIZE = 512;
-
+static constexpr size_t UDP_BUF_SIZE = 512;
 
 // ======== Global instance as declared in header ========
 KnxIpCore KNX;
 
 // small local hex-dump helper for debugging (first up to 96 bytes)
 static void knx_dump_hex(const char* tag, const uint8_t* data, size_t len) {
-  if (!data || !len) { return; }
+  if (!data || !len) {
+    return;
+  }
 
   const size_t maxDump = len < 96 ? len : 96;
   KNX_LOG("%s (%u bytes): ", tag, (unsigned)len);
@@ -90,7 +92,6 @@ static void knx_dump_hex(const char* tag, const uint8_t* data, size_t len) {
   Serial.print('\n');
 #endif
 }
-
 
 // ======== Begin / End / Loop ========
 bool KnxIpCore::begin() {
@@ -110,11 +111,11 @@ bool KnxIpCore::begin() {
 
   // Create UDP socket
   _sock = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  if (_sock < 0) { 
-    _rxErrors++; 
+  if (_sock < 0) {
+    _rxErrors++;
     KNX_UDP_LOG("ERROR: socket() failed errno=%d", errno);
-    KNX_LOG("begin(): socket() failed errno=%d", errno); 
-    return false; 
+    KNX_LOG("begin(): socket() failed errno=%d", errno);
+    return false;
   }
   KNX_UDP_LOG("Socket created: %d", _sock);
 
@@ -123,52 +124,59 @@ bool KnxIpCore::begin() {
   (void)::setsockopt(_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
   // Bind to INADDR_ANY:3671
-  struct sockaddr_in local; memset(&local, 0, sizeof(local));
+  struct sockaddr_in local;
+  memset(&local, 0, sizeof(local));
   local.sin_family = AF_INET;
-  local.sin_port   = htons(KNX_IP_UDP_PORT);
+  local.sin_port = htons(KNX_IP_UDP_PORT);
   local.sin_addr.s_addr = htonl(INADDR_ANY);
   if (::bind(_sock, (struct sockaddr*)&local, sizeof(local)) < 0) {
-    _rxErrors++; 
+    _rxErrors++;
     KNX_UDP_LOG("ERROR: bind() failed errno=%d", errno);
-    KNX_LOG("begin(): bind() failed errno=%d", errno); 
-    ::close(_sock); _sock=-1; return false; 
+    KNX_LOG("begin(): bind() failed errno=%d", errno);
+    ::close(_sock);
+    _sock = -1;
+    return false;
   }
   KNX_UDP_LOG("Socket bound to port %d", KNX_IP_UDP_PORT);
 
-in_addr maddr{};        maddr.s_addr = inet_addr("224.0.23.12");        // KNX group
-in_addr ifaddr{};       ifaddr.s_addr = inet_addr(KnxNetworkInterface::localIP().toString().c_str());
-_lastIfAddr = ifaddr;
+  in_addr maddr{};
+  maddr.s_addr = inet_addr("224.0.23.12"); // KNX group
+  in_addr ifaddr{};
+  ifaddr.s_addr = inet_addr(KnxNetworkInterface::localIP().toString().c_str());
+  _lastIfAddr = ifaddr;
 
-KNX_UDP_LOG("Joining multicast 224.0.23.12 on interface %s", KnxNetworkInterface::localIP().toString().c_str());
+  KNX_UDP_LOG("Joining multicast 224.0.23.12 on interface %s", KnxNetworkInterface::localIP().toString().c_str());
 
-// Join multicast group on all interfaces (or use ifaddr here if you prefer)
-ip_mreq mreq{}; 
-mreq.imr_multiaddr = maddr;
-mreq.imr_interface = ifaddr;
-if (::setsockopt(_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-  _rxErrors++; 
-  KNX_UDP_LOG("ERROR: IP_ADD_MEMBERSHIP failed errno=%d", errno);
-  KNX_LOG("begin(): IP_ADD_MEMBERSHIP failed errno=%d", errno);
-} else {
-  KNX_UDP_LOG("Successfully joined multicast group");
-}
+  // Join multicast group on all interfaces (or use ifaddr here if you prefer)
+  ip_mreq mreq{};
+  mreq.imr_multiaddr = maddr;
+  mreq.imr_interface = ifaddr;
+  if (::setsockopt(_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+    _rxErrors++;
+    KNX_UDP_LOG("ERROR: IP_ADD_MEMBERSHIP failed errno=%d", errno);
+    KNX_LOG("begin(): IP_ADD_MEMBERSHIP failed errno=%d", errno);
+  } else {
+    KNX_UDP_LOG("Successfully joined multicast group");
+  }
 
-// TTL=1 and LOOP=1 are fine…
-uint8_t ttl = 1;  (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_TTL,  &ttl,  sizeof(ttl));
-uint8_t loop = 1; (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+  // TTL=1 and LOOP=1 are fine…
+  uint8_t ttl = 1;
+  (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
+  uint8_t loop = 1;
+  (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
 
-// Pin outgoing multicast to the STA interface
+  // Pin outgoing multicast to the STA interface
   if (::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_IF, &ifaddr, sizeof(ifaddr)) < 0) {
     KNX_UDP_LOG("ERROR: IP_MULTICAST_IF failed errno=%d", errno);
     KNX_LOG("begin(): IP_MULTICAST_IF failed errno=%d", errno);
   } else {
     KNX_UDP_LOG("Multicast interface set successfully");
   }
-// Prepare sockaddr for send()
-memset(&_mcastAddr, 0, sizeof(_mcastAddr));
-_mcastAddr.sin_family = AF_INET;
-_mcastAddr.sin_port   = htons(KNX_IP_UDP_PORT);
-_mcastAddr.sin_addr   = maddr;
+  // Prepare sockaddr for send()
+  memset(&_mcastAddr, 0, sizeof(_mcastAddr));
+  _mcastAddr.sin_family = AF_INET;
+  _mcastAddr.sin_port = htons(KNX_IP_UDP_PORT);
+  _mcastAddr.sin_addr = maddr;
 
   // Non-blocking
   fcntl(_sock, F_SETFL, O_NONBLOCK);
@@ -176,7 +184,7 @@ _mcastAddr.sin_addr   = maddr;
   KNX_LOG("begin(): joined %u.%u.%u.%u:%u (sock=%d)",
           _maddr[0], _maddr[1], _maddr[2], _maddr[3],
           (unsigned)KNX_IP_UDP_PORT, _sock);
-  
+
   _running = true;
   KNX_UDP_LOG("KnxIpCore::begin() completed successfully, running=%d", _running);
   return true;
@@ -184,7 +192,10 @@ _mcastAddr.sin_addr   = maddr;
 
 void KnxIpCore::end() {
   if (!_running) return;
-  if (_sock >= 0) { ::close(_sock); _sock = -1; }
+  if (_sock >= 0) {
+    ::close(_sock);
+    _sock = -1;
+  }
   _running = false;
 }
 
@@ -194,8 +205,10 @@ bool KnxIpCore::rejoinMulticast() {
     return false;
   }
 
-  in_addr maddr{};  inet_aton("224.0.23.12", &maddr);
-  in_addr ifaddr{}; inet_aton(KnxNetworkInterface::localIP().toString().c_str(), &ifaddr);
+  in_addr maddr{};
+  inet_aton("224.0.23.12", &maddr);
+  in_addr ifaddr{};
+  inet_aton(KnxNetworkInterface::localIP().toString().c_str(), &ifaddr);
 
   // If interface changed, drop old membership first to avoid stale IGMP state
   if (_lastIfAddr.s_addr != 0 && _lastIfAddr.s_addr != ifaddr.s_addr) {
@@ -215,9 +228,10 @@ bool KnxIpCore::rejoinMulticast() {
   }
 
   // Re-apply multicast socket options that some stacks reset
-  uint8_t ttl = 1;  (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_TTL,  &ttl,  sizeof(ttl));
-  uint8_t loop = 1; (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
- 
+  uint8_t ttl = 1;
+  (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
+  uint8_t loop = 1;
+  (void)::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
 
   // Pin outgoing multicast to Wi-Fi STA again (some drivers reset on config changes)
   if (::setsockopt(_sock, IPPROTO_IP, IP_MULTICAST_IF, &ifaddr, sizeof(ifaddr)) < 0) {
@@ -235,22 +249,22 @@ void KnxIpCore::loop() {
   if (!_running) return;
 
   uint8_t buf[UDP_BUF_SIZE];
-  struct sockaddr_in from; socklen_t flen = sizeof(from);
+  struct sockaddr_in from;
+  socklen_t flen = sizeof(from);
   int len = ::recvfrom(_sock, (char*)buf, sizeof(buf), 0, (struct sockaddr*)&from, &flen);
   if (len <= 0) return; // EWOULDBLOCK
-  
-  KNX_UDP_LOG("Received packet: %d bytes from %d.%d.%d.%d", 
-    len, 
-    (int)((ntohl(from.sin_addr.s_addr) >> 24) & 0xFF),
-    (int)((ntohl(from.sin_addr.s_addr) >> 16) & 0xFF), 
-    (int)((ntohl(from.sin_addr.s_addr) >> 8) & 0xFF),
-    (int)(ntohl(from.sin_addr.s_addr) & 0xFF));
-  
+
+  KNX_UDP_LOG("Received packet: %d bytes from %d.%d.%d.%d",
+              len,
+              (int)((ntohl(from.sin_addr.s_addr) >> 24) & 0xFF),
+              (int)((ntohl(from.sin_addr.s_addr) >> 16) & 0xFF),
+              (int)((ntohl(from.sin_addr.s_addr) >> 8) & 0xFF),
+              (int)(ntohl(from.sin_addr.s_addr) & 0xFF));
+
   // debug
   knx_dump_hex("RX packet", buf, len);
   _handleIncoming(buf, len);
 }
-
 
 // ======== Public TX API ========
 bool KnxIpCore::groupValueWrite(uint16_t ga, const uint8_t* data, uint8_t len) {
@@ -309,9 +323,15 @@ bool KnxIpCore::sendCemiToGroup(uint16_t ga, KnxService svc, const uint8_t* asdu
   const uint8_t tpdu0 = 0x00; // UDT group
   uint8_t tpdu1 = 0x00;
   switch (svc) {
-    case KnxService::GroupValue_Read:     tpdu1 = (0b00 << 6); break;
-    case KnxService::GroupValue_Response: tpdu1 = (0b01 << 6); break;
-    case KnxService::GroupValue_Write:    tpdu1 = (0b10 << 6); break;
+    case KnxService::GroupValue_Read:
+      tpdu1 = (0b00 << 6);
+      break;
+    case KnxService::GroupValue_Response:
+      tpdu1 = (0b01 << 6);
+      break;
+    case KnxService::GroupValue_Write:
+      tpdu1 = (0b10 << 6);
+      break;
   }
 
   // APDU bytes (incl. TPDU0 + TPDU1 + payload); cEMI "length" is APDU-1
@@ -331,11 +351,12 @@ bool KnxIpCore::sendCemiToGroup(uint16_t ga, KnxService svc, const uint8_t* asdu
   }
 
   // ---- KNXnet/IP routing wrapper ----
-  uint8_t frame[96]; uint8_t p = 0;
+  uint8_t frame[96];
+  uint8_t p = 0;
   const uint16_t totalLen = (uint16_t)(6 + idx);
 
-  frame[p++] = 0x06;                               // header size
-  frame[p++] = KNX_PROTOCOL_VERSION;               // 0x10
+  frame[p++] = 0x06;                 // header size
+  frame[p++] = KNX_PROTOCOL_VERSION; // 0x10
   frame[p++] = (uint8_t)(KNX_SVC_ROUTING_IND >> 8);
   frame[p++] = (uint8_t)(KNX_SVC_ROUTING_IND & 0xFF);
   frame[p++] = (uint8_t)(totalLen >> 8);
@@ -357,7 +378,7 @@ bool KnxIpCore::sendCemiToGroup(uint16_t ga, KnxService svc, const uint8_t* asdu
       return false;
     }
     _txPackets++;
-    KNX_LOG("TX: sent %d bytes rpt=%u/%u (txPackets=%u)", p, (unsigned)(i+1), (unsigned)repeats, (unsigned)_txPackets);
+    KNX_LOG("TX: sent %d bytes rpt=%u/%u (txPackets=%u)", p, (unsigned)(i + 1), (unsigned)repeats, (unsigned)_txPackets);
     if (_enhancedGapMs) delay(_enhancedGapMs);
   }
   return true;
@@ -365,89 +386,115 @@ bool KnxIpCore::sendCemiToGroup(uint16_t ga, KnxService svc, const uint8_t* asdu
 
 // ======== Internal RX path ========
 bool KnxIpCore::_sendSearchResponse(bool extended, const uint8_t* req, int reqLen) {
-  // --- Ziel bestimmen: Unicast zurück an den in der Anfrage angegebenen HPAI ---
-  // Für 0x0201/0x020B steht ab Offset 6 die HPAI (Len=8, IPv4/UDP, IP, Port)
-  struct sockaddr_in to{}; memset(&to, 0, sizeof(to));
+  // Reply by unicast to the HPAI supplied in the request.
+  // Search requests place the HPAI at offset 6 (length 8, IPv4/UDP, IP, port).
+  struct sockaddr_in to{};
+  memset(&to, 0, sizeof(to));
   to.sin_family = AF_INET;
-  if (reqLen >= 14 && req[0]==0x06 && req[1]==KNX_PROTOCOL_VERSION && req[6]==0x08 && req[7]==0x01) {
+  if (reqLen >= 14 && req[0] == 0x06 && req[1] == KNX_PROTOCOL_VERSION && req[6] == 0x08 && req[7] == 0x01) {
     // IP (8..11), Port (12..13)
-    uint32_t ip;   memcpy(&ip,   &req[8],  4);
-    uint16_t port; memcpy(&port, &req[12], 2);
+    uint32_t ip;
+    memcpy(&ip, &req[8], 4);
+    uint16_t port;
+    memcpy(&port, &req[12], 2);
     to.sin_addr.s_addr = ip;
-    to.sin_port        = *(uint16_t*)&req[12]; // Netzwerk-Byteordnung belassen
+    to.sin_port = *(uint16_t*)&req[12]; // Preserve network byte order.
   } else {
-    // Fallback (sollte nicht nötig sein)
+    // Preserve the broadcast fallback for requests without a complete IPv4 HPAI.
     to.sin_addr.s_addr = inet_addr("255.255.255.255");
-    to.sin_port        = htons(KNX_IP_UDP_PORT);
+    to.sin_port = htons(KNX_IP_UDP_PORT);
   }
 
-  // --- HPAI (Control Endpoint) unseres Geräts ---
+  // HPAI describing this device's control endpoint.
   uint8_t hpai[8];
-  hpai[0] = 0x08; hpai[1] = 0x01; // len, IPv4/UDP
+  hpai[0] = 0x08;
+  hpai[1] = 0x01; // len, IPv4/UDP
   IPAddress ip = KnxNetworkInterface::localIP();
-  hpai[2] = ip[0]; hpai[3] = ip[1]; hpai[4] = ip[2]; hpai[5] = ip[3];
+  hpai[2] = ip[0];
+  hpai[3] = ip[1];
+  hpai[4] = ip[2];
+  hpai[5] = ip[3];
   hpai[6] = (uint8_t)(KNX_IP_UDP_PORT >> 8);
   hpai[7] = (uint8_t)(KNX_IP_UDP_PORT & 0xFF);
 
-  // --- DIB Device Info (Typ 0x01, fixe Länge 0x36 für Einfachheit) ---
-  uint8_t dib_dev[0x36]; memset(dib_dev, 0, sizeof(dib_dev));
-  dib_dev[0] = 0x36; dib_dev[1] = 0x01; // len, type
+  // Device information DIB (type 0x01, fixed length 0x36).
+  uint8_t dib_dev[0x36];
+  memset(dib_dev, 0, sizeof(dib_dev));
+  dib_dev[0] = 0x36;
+  dib_dev[1] = 0x01; // len, type
   dib_dev[2] = 0x20; // Medium IP
   dib_dev[3] = 0x00; // Device status OK
-  // PA (falls gesetzt, sonst 0)
+  // Individual address, or zero if not configured.
   dib_dev[4] = (uint8_t)(_pa >> 8);
   dib_dev[5] = (uint8_t)(_pa & 0xFF);
   // Project/Installation ID:
-  dib_dev[6] = 0x00; dib_dev[7] = 0x00;
-  // Seriennummer (MAC)
-  uint8_t mac[6]; KnxNetworkInterface::localMAC(mac);
+  dib_dev[6] = 0x00;
+  dib_dev[7] = 0x00;
+  // Use the MAC address as the serial number.
+  uint8_t mac[6];
+  KnxNetworkInterface::localMAC(mac);
   memcpy(&dib_dev[8], mac, 6);
   // Multicast 224.0.23.12
-  dib_dev[14] = 224; dib_dev[15] = 0; dib_dev[16] = 23; dib_dev[17] = 12;
+  dib_dev[14] = 224;
+  dib_dev[15] = 0;
+  dib_dev[16] = 23;
+  dib_dev[17] = 12;
   // MAC again
   memcpy(&dib_dev[18], mac, 6);
-  // Friendly Name (max 30B inkl. 0)
-  extern char serverDescription[33]; // kommt aus WLED core
+  // Friendly name, at most 30 bytes including the terminator.
+  extern char serverDescription[33]; // Provided by the WLED core.
   const char* fallbackName = "WLED KNX";
   const char* name = (serverDescription[0] != '\0') ? serverDescription : fallbackName;
   strncpy((char*)&dib_dev[24], name, 30);
-  dib_dev[24 + 29] = '\0'; // sicherstellen, dass immer terminiert
-  // (Rest bleibt 0 als Padding)
+  dib_dev[24 + 29] = '\0'; // Always terminate the name.
+  // Remaining bytes stay zero for padding.
 
-  // --- DIB Supported Service Families (Typ 0x02) ---
+  // Supported service families DIB (type 0x02).
   // Minimal: Core v1, Routing v1
-  uint8_t dib_svc[10]; memset(dib_svc, 0, sizeof(dib_svc));
-  dib_svc[0] = 0x0A; dib_svc[1] = 0x02;
-  dib_svc[2] = 0x02; dib_svc[3] = 0x01; // Core v1
-  dib_svc[4] = 0x05; dib_svc[5] = 0x01; // Routing v1
-  // Optional: kein Tunneling (lassen wir weg / v0)
+  uint8_t dib_svc[10];
+  memset(dib_svc, 0, sizeof(dib_svc));
+  dib_svc[0] = 0x0A;
+  dib_svc[1] = 0x02;
+  dib_svc[2] = 0x02;
+  dib_svc[3] = 0x01; // Core v1
+  dib_svc[4] = 0x05;
+  dib_svc[5] = 0x01; // Routing v1
+  // Tunneling is not advertised.
 
-  // (Optional) Bei Extended Request könnte man zusätzliche DIBs anfügen.
-  // Für routing-only genügt die gleiche Antwort.
+  // Extended requests use the same DIB payload for this routing-only implementation.
 
   // --- KNXnet/IP Header ---
   // 06 10 02 02/0C <len>
   const uint16_t svc = extended ? KNX_SVC_SEARCH_RES_EXT : KNX_SVC_SEARCH_RES;
   const size_t payloadLen = 6 + sizeof(hpai) + sizeof(dib_dev) + sizeof(dib_svc);
   uint8_t* pkt = (uint8_t*)malloc(payloadLen);
-  if (!pkt) { KNX_LOG("SearchResponse: OOM"); return false; }
+  if (!pkt) {
+    KNX_LOG("SearchResponse: OOM");
+    return false;
+  }
 
   size_t p = 0;
-  pkt[p++] = 0x06; pkt[p++] = KNX_PROTOCOL_VERSION;
+  pkt[p++] = 0x06;
+  pkt[p++] = KNX_PROTOCOL_VERSION;
   pkt[p++] = (uint8_t)(svc >> 8);
   pkt[p++] = (uint8_t)(svc & 0xFF);
   pkt[p++] = (uint8_t)(payloadLen >> 8);
   pkt[p++] = (uint8_t)(payloadLen & 0xFF);
 
-  memcpy(&pkt[p], hpai, sizeof(hpai));       p += sizeof(hpai);
-  memcpy(&pkt[p], dib_dev, sizeof(dib_dev)); p += sizeof(dib_dev);
-  memcpy(&pkt[p], dib_svc, sizeof(dib_svc)); p += sizeof(dib_svc);
+  memcpy(&pkt[p], hpai, sizeof(hpai));
+  p += sizeof(hpai);
+  memcpy(&pkt[p], dib_dev, sizeof(dib_dev));
+  p += sizeof(dib_dev);
+  memcpy(&pkt[p], dib_svc, sizeof(dib_svc));
+  p += sizeof(dib_svc);
 
-  // --- Senden ---
+  // Send the discovery response.
   ssize_t sent = ::sendto(_sock, pkt, payloadLen, 0, (struct sockaddr*)&to, sizeof(to));
   bool ok = (sent == (ssize_t)payloadLen);
-  if (!ok) _txErrors++;
-  else     _txPackets++;
+  if (!ok)
+    _txErrors++;
+  else
+    _txPackets++;
   KNX_LOG("TX: %s (%u bytes) to %s:%u",
           extended ? "SearchResponseExtended" : "SearchResponse",
           (unsigned)payloadLen,
@@ -458,18 +505,28 @@ bool KnxIpCore::_sendSearchResponse(bool extended, const uint8_t* req, int reqLe
 
 void KnxIpCore::_handleIncoming(const uint8_t* buf, int len) {
   // Validate KNXnet/IP header (min 6 bytes)
-  if (len < 6) { _rxErrors++; KNX_LOG("RX: too short (%d).", len); return; }
+  if (len < 6) {
+    _rxErrors++;
+    KNX_LOG("RX: too short (%d).", len);
+    return;
+  }
 
-  const uint8_t  headerSize = buf[0];
-  const uint8_t  proto      = buf[1];
-  const uint16_t svc        = (uint16_t(buf[2]) << 8) | buf[3];
-  const uint16_t totalLen   = (uint16_t(buf[4]) << 8) | buf[5];
+  const uint8_t headerSize = buf[0];
+  const uint8_t proto = buf[1];
+  const uint16_t svc = (uint16_t(buf[2]) << 8) | buf[3];
+  const uint16_t totalLen = (uint16_t(buf[4]) << 8) | buf[5];
 
   if (headerSize != 0x06 || proto != KNX_PROTOCOL_VERSION) {
-    _rxErrors++; KNX_LOG("RX: bad header: size=0x%02X proto=0x%02X.", headerSize, proto); return;
+    _rxErrors++;
+    KNX_LOG("RX: bad header: size=0x%02X proto=0x%02X.", headerSize, proto);
+    return;
   }
   if (totalLen != len) {
-    if (totalLen > len) { _rxErrors++; KNX_LOG("RX: totalLen(%u)>len(%d).", (unsigned)totalLen, len); return; }
+    if (totalLen > len) {
+      _rxErrors++;
+      KNX_LOG("RX: totalLen(%u)>len(%d).", (unsigned)totalLen, len);
+      return;
+    }
   }
 
   // Accept SearchRequest(Extended) and Routing Indication
@@ -483,20 +540,28 @@ void KnxIpCore::_handleIncoming(const uint8_t* buf, int len) {
     return;
   }
 
-
-  if (len < 6 + 10) { _rxErrors++; KNX_LOG("RX: cEMI too short (len=%d).", len); return; }
+  if (len < 6 + 10) {
+    _rxErrors++;
+    KNX_LOG("RX: cEMI too short (len=%d).", len);
+    return;
+  }
 
   const uint8_t* cemi = buf + 6;
-  const int      cemiLen = len - 6;
+  const int cemiLen = len - 6;
 
   const uint8_t msgCode = cemi[0];
-  const uint8_t addInfo = cemi[1]; (void)addInfo;
+  const uint8_t addInfo = cemi[1];
+  (void)addInfo;
 
   if (msgCode != CEMI_LDATA_IND) {
     KNX_LOG("RX: msgCode=0x%02X not L_Data.ind.", msgCode);
     return;
   }
-  if (cemiLen < 10) { _rxErrors++; KNX_LOG("RX: cEMI header truncated (cemiLen=%d).", cemiLen); return; }
+  if (cemiLen < 10) {
+    _rxErrors++;
+    KNX_LOG("RX: cEMI header truncated (cemiLen=%d).", cemiLen);
+    return;
+  }
 
   const uint8_t ctrl1 = cemi[2];
   const uint8_t ctrl2 = cemi[3];
@@ -507,12 +572,20 @@ void KnxIpCore::_handleIncoming(const uint8_t* buf, int len) {
 
   // cEMI [8] = APDU length minus 1
   const uint8_t apduLenMinus1 = cemi[8];
-  const uint8_t apduBytes     = uint8_t(apduLenMinus1 + 1); // TPDU0+TPDU1+payload
+  const uint8_t apduBytes = uint8_t(apduLenMinus1 + 1); // TPDU0+TPDU1+payload
 
   // TPDU starts at cemi[9]
-  if (cemiLen < 9 + apduBytes) { _rxErrors++; KNX_LOG("RX: TPDU truncated (need %u, have %d).", (unsigned)apduBytes, cemiLen - 9); return; }
+  if (cemiLen < 9 + apduBytes) {
+    _rxErrors++;
+    KNX_LOG("RX: TPDU truncated (need %u, have %d).", (unsigned)apduBytes, cemiLen - 9);
+    return;
+  }
   const uint8_t* tpdu = cemi + 9;
-  if (apduBytes < 2) { _rxErrors++; KNX_LOG("RX: APDU < 2 bytes."); return; }
+  if (apduBytes < 2) {
+    _rxErrors++;
+    KNX_LOG("RX: APDU < 2 bytes.");
+    return;
+  }
 
   // Must be group address (ctrl2 bit7)
   const bool isGroup = (ctrl2 & 0x80) != 0;
@@ -524,7 +597,7 @@ void KnxIpCore::_handleIncoming(const uint8_t* buf, int len) {
   // Drop our own multicast (mirrored GA protection)
   if (src == _pa && _pa != 0) {
     KNX_LOG("RX: own frame (src=%u.%u.%u) ignored.",
-      (unsigned)((src>>12)&0x0F), (unsigned)((src>>8)&0x0F), (unsigned)(src&0xFF));
+            (unsigned)((src >> 12) & 0x0F), (unsigned)((src >> 8) & 0x0F), (unsigned)(src & 0xFF));
     return;
   }
 
@@ -532,28 +605,36 @@ void KnxIpCore::_handleIncoming(const uint8_t* buf, int len) {
   const uint8_t apci4 = uint8_t(((tpdu[0] & 0x03) << 2) | ((tpdu[1] & 0xC0) >> 6));
   KnxService svcDetected;
   switch (apci4) {
-    case 0x0: svcDetected = KnxService::GroupValue_Read;     break;
-    case 0x1: svcDetected = KnxService::GroupValue_Response; break;
-    case 0x2: svcDetected = KnxService::GroupValue_Write;    break;
+    case 0x0:
+      svcDetected = KnxService::GroupValue_Read;
+      break;
+    case 0x1:
+      svcDetected = KnxService::GroupValue_Response;
+      break;
+    case 0x2:
+      svcDetected = KnxService::GroupValue_Write;
+      break;
     default:
       KNX_LOG("RX: APCI=0x%X not handled.", apci4);
       return;
   }
 
   // ---------- ASDU extraction ----------
-  const uint8_t* asdu  = nullptr;
-  uint8_t        asduLen = 0;
+  const uint8_t* asdu = nullptr;
+  uint8_t asduLen = 0;
 
   if (svcDetected == KnxService::GroupValue_Write && apduBytes == 2) {
     static uint8_t one;
-    one = (tpdu[1] & 0x0F);  // allow for DPT_1xx, DPT_2xx and DPT_3xx
-    asdu = &one; asduLen = 1;
+    one = (tpdu[1] & 0x0F); // allow for DPT_1xx, DPT_2xx and DPT_3xx
+    asdu = &one;
+    asduLen = 1;
   } else if (apduBytes > 2) {
-    asdu = tpdu + 2; asduLen = uint8_t(apduBytes - 2);
+    asdu = tpdu + 2;
+    asduLen = uint8_t(apduBytes - 2);
   }
 
   KNX_LOG("RX: src=%u.%u.%u dst=%u/%u/%u (0x%04X) apduBytes=%u svc=%u lenASDU=%u",
-          (unsigned)((src>>12)&0x0F), (unsigned)((src>>8)&0x0F), (unsigned)(src&0xFF),
+          (unsigned)((src >> 12) & 0x0F), (unsigned)((src >> 8) & 0x0F), (unsigned)(src & 0xFF),
           knxGaMain(dst), knxGaMiddle(dst), knxGaSub(dst), dst,
           (unsigned)apduBytes, (unsigned)svcDetected, (unsigned)asduLen);
 
@@ -564,14 +645,15 @@ void KnxIpCore::_handleIncoming(const uint8_t* buf, int len) {
     // Build a small signature across src, dst, apci, and up to 4 bytes of payload
     uint32_t sig = ((uint32_t)src << 16) ^ (uint32_t)dst ^ ((uint32_t)apci4 << 28);
     if (asdu && asduLen) {
-      uint32_t d = 0; memcpy(&d, asdu, (asduLen >= 4 ? 4 : asduLen));
+      uint32_t d = 0;
+      memcpy(&d, asdu, (asduLen >= 4 ? 4 : asduLen));
       sig ^= _mix32(d + ((uint32_t)asduLen << 24));
     }
     sig = _mix32(sig);
 
     // Deduplicate within window
     for (size_t i = 0; i < _rxSeen.size(); ++i) {
-      const RxSig &r = _rxSeen[i];
+      const RxSig& r = _rxSeen[i];
       if (r.sig == sig && (now - r.ts) <= _rxDedupWindowMs) {
         KNX_LOG("RX: duplicate suppressed (sig=0x%08X, %ums)", (unsigned)sig, (unsigned)(now - r.ts));
         return;
@@ -583,12 +665,13 @@ void KnxIpCore::_handleIncoming(const uint8_t* buf, int len) {
     // Toggle throttling for 1-bit writes (ignore second toggle <1s)
     if (svcDetected == KnxService::GroupValue_Write && asdu && asduLen == 1) {
       const uint8_t bit = (asdu[0] & 0x01);
-      auto &st = _rxBitCache[dst];
+      auto& st = _rxBitCache[dst];
       if (st.ts != 0 && (now - st.ts) < 1000 && st.v != bit) {
         KNX_LOG("RX: toggle throttled on GA 0x%04X (%u->%u in %u ms)", dst, st.v, bit, (unsigned)(now - st.ts));
         return;
       }
-      st.v = bit; st.ts = now;
+      st.v = bit;
+      st.ts = now;
     }
   }
 
@@ -619,7 +702,5 @@ void KnxIpCore::clearRegistrations() {
   _callbacks.clear();
 }
 
-
 // ======== (Optional) convenience wrappers used by header ========
 // (end of file)
-

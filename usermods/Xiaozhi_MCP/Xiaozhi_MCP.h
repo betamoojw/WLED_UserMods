@@ -7,6 +7,8 @@
 #include "wled.h"
 #include <WebSocketMCP.h>
 
+// Keep the existing per-usermod Serial gates: routing these through WLED_DEBUG
+// would change diagnostic output for builds that enable only the module flag.
 // Debug logging control: define MCP_UM_DEBUG at build time to enable verbose logs
 #ifdef MCP_UM_DEBUG
 #define MCP_UM_DEBUGF(...) Serial.printf(__VA_ARGS__)
@@ -29,22 +31,21 @@
 #define USERMOD_ID_XIAOZHI_MCP 0xA900
 #endif
 
-class Xiaozhi_MCP : public Usermod
-{
+class Xiaozhi_MCP : public Usermod {
 public:
   // --- Usermod API ---
-  void setup();
-  void loop();
-  void addToJsonInfo(JsonObject &root);
-  void addToConfig(JsonObject &root);
-  void appendConfigData();
-  bool readFromConfig(JsonObject &root);
-  uint16_t getId() { return USERMOD_ID_XIAOZHI_MCP; }
-  const char *getName() { return "Xiaozhi_MCP"; }
+  void setup() override;
+  void loop() override;
+  void addToJsonInfo(JsonObject& root) override;
+  void addToConfig(JsonObject& root) override;
+  void appendConfigData() override;
+  bool readFromConfig(JsonObject& root) override;
+  uint16_t getId() override { return USERMOD_ID_XIAOZHI_MCP; }
+  const char* getName() { return "Xiaozhi_MCP"; }
 
   // Accessors for MCP terminal alias
-  const String &getMcpTerminalAlias() const { return mcpTerminalAlias; }
-  void setMcpTerminalAlias(const String &alias) { mcpTerminalAlias = alias; }
+  const String& getMcpTerminalAlias() const { return mcpTerminalAlias; }
+  void setMcpTerminalAlias(const String& alias) { mcpTerminalAlias = alias; }
 
 private:
   // --- Config values (editable via JSON/UI) ---
@@ -60,10 +61,8 @@ private:
   static const char _mcpTerminalAlias[];
   static const char _mcpEndpoint[];
 
-  const int TIMEOUT_60_SECONDS = 60;
-  const int TIMEOUT_60_MINUTES = 60;
+  static constexpr int TIMEOUT_60_SECONDS = 60;
 
   // any private methods should go here (non-inline method should be defined out of class)
   bool checkMcpConfig();
-  void publishMqtt(const char *state, bool retain = false); // example for publishing MQTT message
 };

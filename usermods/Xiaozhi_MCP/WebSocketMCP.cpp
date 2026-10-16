@@ -32,7 +32,7 @@ struct WebSocketMCP::Transport {
   static constexpr uint32_t PONG_TIMEOUT = 10000;
   static constexpr uint8_t MAX_MISSED_PONGS = 6;
   struct Message {
-    char *data;
+    char* data;
     size_t length;
     uint32_t session;
   };
@@ -48,7 +48,7 @@ struct WebSocketMCP::Transport {
   // Toki is mutable and belongs to WLED's main loop. Publish UTC seconds here;
   // the worker must neither call toki.second() nor use the unrelated POSIX clock.
   std::atomic<uint32_t> clockSeconds{0};
-  std::atomic<const char *> detail{"Starting"};
+  std::atomic<const char*> detail{"Starting"};
   bool started = false; // Main-loop-only task admission state.
   uint32_t lastStartAttempt = 0;
   esp_transport_handle_t socket = nullptr, websocket = nullptr; // Worker-owned.
@@ -56,7 +56,7 @@ struct WebSocketMCP::Transport {
   // NetworkClient::write can restart its retry count on each partial send, so use
   // nonblocking lwIP sends with one deadline shared by all writes in a TLS operation.
   class TlsTcpClient : public NetworkClient {
-    Transport &_owner;
+    Transport& _owner;
     uint32_t _ioStarted = 0, _ioTimeout = IO_TIMEOUT;
 
     bool cancelled() {
@@ -66,10 +66,13 @@ struct WebSocketMCP::Transport {
     }
 
   public:
-    explicit TlsTcpClient(Transport &owner) : _owner(owner) {}
-    void arm(uint32_t timeout = IO_TIMEOUT) { _ioStarted = millis(); _ioTimeout = timeout; }
+    explicit TlsTcpClient(Transport& owner) : _owner(owner) {}
+    void arm(uint32_t timeout = IO_TIMEOUT) {
+      _ioStarted = millis();
+      _ioTimeout = timeout;
+    }
     using NetworkClient::connect;
-    int connect(const char *host, uint16_t port) override {
+    int connect(const char* host, uint16_t port) override {
       int result = NetworkClient::connect(host, port, IO_TIMEOUT);
       arm(); // DNS/TCP setup must not consume the subsequent TLS I/O deadline.
       return result;
@@ -80,7 +83,7 @@ struct WebSocketMCP::Transport {
       delay(1); // ESP_SSLClient's handshake loop otherwise need not yield to IDLE.
       return cancelled() ? 0 : NetworkClient::available();
     }
-    size_t write(const uint8_t *buffer, size_t length) override {
+    size_t write(const uint8_t* buffer, size_t length) override {
       if (!length) return 0;
       do {
         if (cancelled() || fd() < 0) break;
@@ -99,7 +102,7 @@ struct WebSocketMCP::Transport {
 
   McpTrustStore trustStore;
   BSSL_SSLClient tls; // Direct TLS API avoids the wrapper's port-based auto-detection.
-  Client *client = nullptr;
+  Client* client = nullptr;
 
   // Discard queued buffers when their connection is no longer usable.
   static void clearQueue(QueueHandle_t queue) {
@@ -116,14 +119,18 @@ struct WebSocketMCP::Transport {
       vQueueDelete(queue);
     }
   }
-  void release() { if (references.fetch_sub(1) == 1) delete this; }
+  void release() {
+    if (references.fetch_sub(1) == 1) delete this;
+  }
 
   // Reject malformed URLs and header injection without exposing endpoint credentials.
-  bool parseEndpoint(const char *endpoint) {
+  bool parseEndpoint(const char* endpoint) {
     if (!endpoint || strnlen(endpoint, 2049) > 2048) return false;
     String url(endpoint);
-    if (url.startsWith("wss://")) secure = true;
-    else if (!url.startsWith("ws://")) return false;
+    if (url.startsWith("wss://"))
+      secure = true;
+    else if (!url.startsWith("ws://"))
+      return false;
     for (size_t i = 0; i < url.length(); i++) {
       if ((uint8_t)url[i] <= 32 || (uint8_t)url[i] == 127 || url[i] == '#') return false;
     }
@@ -164,7 +171,7 @@ struct WebSocketMCP::Transport {
   }
 
   // Finish partial writes within a fixed deadline; never wait indefinitely.
-  bool writeAll(const char *data, size_t length) {
+  bool writeAll(const char* data, size_t length) {
     uint32_t started = millis();
     while (length && !stop && !reset) {
       uint32_t elapsed = millis() - started;
@@ -178,7 +185,7 @@ struct WebSocketMCP::Transport {
   }
 
   // Match comma-separated HTTP tokens without accepting substrings like "notupgrade".
-  static bool hasToken(String value, const char *token) {
+  static bool hasToken(String value, const char* token) {
     value.toLowerCase();
     int start = 0;
     while (start < (int)value.length()) {
@@ -199,7 +206,7 @@ struct WebSocketMCP::Transport {
     size_t encoded = 0;
     esp_fill_random(nonce, sizeof(nonce));
     if (mbedtls_base64_encode(key, sizeof(key), &encoded, nonce, sizeof(nonce))) return false;
-    String challenge = String((char *)key) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    String challenge = String((char*)key) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     br_sha1_context sha;
     br_sha1_init(&sha);
     br_sha1_update(&sha, challenge.c_str(), challenge.length());
@@ -210,7 +217,7 @@ struct WebSocketMCP::Transport {
     String hostHeader = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
     request = "GET " + path + " HTTP/1.1\r\nHost: " + hostHeader + ":" + String(port) +
               "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: " +
-              (char *)key + "\r\nSec-WebSocket-Protocol: arduino\r\n\r\n";
+              (char*)key + "\r\nSec-WebSocket-Protocol: arduino\r\n\r\n";
     if (!writeAll(request.c_str(), request.length())) return false;
 
     String line;
@@ -242,26 +249,30 @@ struct WebSocketMCP::Transport {
         String name = line.substring(0, colon), value = line.substring(colon + 1);
         name.toLowerCase();
         value.trim();
-        if (name == "upgrade") upgrade = hasToken(value, "websocket");
-        else if (name == "connection") connection = hasToken(value, "upgrade");
+        if (name == "upgrade")
+          upgrade = hasToken(value, "websocket");
+        else if (name == "connection")
+          connection = hasToken(value, "upgrade");
         else if (name == "sec-websocket-accept") {
-          if (accepted || value != (char *)accept) return false;
+          if (accepted || value != (char*)accept) return false;
           accepted = true;
-        } else if (name == "sec-websocket-extensions" && value.length()) return false;
-        else if (name == "sec-websocket-protocol" && value != "arduino") return false;
+        } else if (name == "sec-websocket-extensions" && value.length())
+          return false;
+        else if (name == "sec-websocket-protocol" && value != "arduino")
+          return false;
       }
       line = "";
     }
     return false;
   }
 
-  static Transport *fromHandle(esp_transport_handle_t handle) {
-    return static_cast<Transport *>(esp_transport_get_context_data(handle));
+  static Transport* fromHandle(esp_transport_handle_t handle) {
+    return static_cast<Transport*>(esp_transport_get_context_data(handle));
   }
 
   // Arduino clients are polled in the worker; the render loop never waits for TLS.
   static int pollRead(esp_transport_handle_t handle, int timeout) {
-    auto *state = fromHandle(handle);
+    auto* state = fromHandle(handle);
     uint32_t started = millis();
     state->tcp.arm();
     do {
@@ -275,15 +286,15 @@ struct WebSocketMCP::Transport {
   }
 
   // IDF's frame parser expects a complete header read, while payload reads may be short.
-  static int readSocket(esp_transport_handle_t handle, char *buffer, int length, int timeout) {
-    auto *state = fromHandle(handle);
+  static int readSocket(esp_transport_handle_t handle, char* buffer, int length, int timeout) {
+    auto* state = fromHandle(handle);
     uint32_t started = millis();
     int received = 0;
     while (received < length) {
       uint32_t elapsed = millis() - started;
       int ready = pollRead(handle, elapsed >= (uint32_t)timeout ? 0 : timeout - elapsed);
       if (ready <= 0) return received ? received : ready;
-      int count = state->client->read((uint8_t *)buffer + received, length - received);
+      int count = state->client->read((uint8_t*)buffer + received, length - received);
       if (count <= 0) return received ? received : -1;
       received += count;
       // Header reads are at most 8 bytes. Larger reads may return available payload.
@@ -294,8 +305,8 @@ struct WebSocketMCP::Transport {
 
   // Bound the entire write, including TLS records, rather than restarting a timeout
   // for every chunk of a large MCP reply. Short writes make the frame fail closed.
-  static int writeSocket(esp_transport_handle_t handle, const char *buffer, int length, int timeout) {
-    auto *state = fromHandle(handle);
+  static int writeSocket(esp_transport_handle_t handle, const char* buffer, int length, int timeout) {
+    auto* state = fromHandle(handle);
     uint32_t started = millis();
     state->tcp.arm(timeout > 0 ? timeout : 0);
     int written = 0;
@@ -303,7 +314,7 @@ struct WebSocketMCP::Transport {
       uint32_t elapsed = millis() - started;
       if (timeout <= 0 || elapsed >= (uint32_t)timeout) break;
       if (state->secure) state->tls.setTimeout(timeout - elapsed);
-      size_t count = state->client->write((const uint8_t *)buffer + written, min(length - written, 512));
+      size_t count = state->client->write((const uint8_t*)buffer + written, min(length - written, 512));
       if (!count) return -1;
       written += count;
     }
@@ -311,12 +322,12 @@ struct WebSocketMCP::Transport {
   }
 
   static int pollWrite(esp_transport_handle_t handle, int) {
-    auto *state = fromHandle(handle);
+    auto* state = fromHandle(handle);
     return state->client->connected() ? 1 : -1;
   }
 
   static int closeSocket(esp_transport_handle_t handle) {
-    auto *state = fromHandle(handle);
+    auto* state = fromHandle(handle);
     state->tcp.stop();
     if (state->client) state->client->stop();
     return 0;
@@ -399,14 +410,14 @@ struct WebSocketMCP::Transport {
   }
 
   // ESP-IDF masks client frames in place, so all nonempty payloads must be writable.
-  bool sendFrame(uint8_t opcode, char *data, size_t length) {
+  bool sendFrame(uint8_t opcode, char* data, size_t length) {
     auto op = static_cast<ws_transport_opcodes_t>(0x80 | opcode);
     return esp_transport_ws_send_raw(websocket, op, data, length, IO_TIMEOUT) == (int)length;
   }
 
   // Assemble text messages across TCP reads and continuation frames. Control frames
   // can interleave; binary messages are consumed but never passed to the MCP layer.
-  bool receiveFrame(String &message, uint8_t &messageOpcode, bool &waitingPong, uint8_t &missedPongs) {
+  bool receiveFrame(String& message, uint8_t& messageOpcode, bool& waitingPong, uint8_t& missedPongs) {
     char buffer[512];
     // Poll briefly when idle, but allow a full I/O timeout once a frame starts.
     // Using the short poll timeout for IDF's header parser would reject slow TCP splits.
@@ -426,15 +437,18 @@ struct WebSocketMCP::Transport {
     } else if (opcode == 1 || opcode == 2) {
       if (messageOpcode) return false;
       messageOpcode = opcode;
-    } else if (opcode != 0 || !messageOpcode) return false;
+    } else if (opcode != 0 || !messageOpcode)
+      return false;
     if (!control && (size_t)length > MAX_MESSAGE - message.length()) return false;
 
     char controlData[125];
     size_t received = 0;
     do {
       if (!count && length) return false; // A mid-frame timeout invalidates IDF's parser state.
-      if (control && count) memcpy(controlData + received, buffer, count);
-      else if (messageOpcode == 1 && count && !message.concat(buffer, count)) return false;
+      if (control && count)
+        memcpy(controlData + received, buffer, count);
+      else if (messageOpcode == 1 && count && !message.concat(buffer, count))
+        return false;
       received += count;
       if (received == (size_t)length) break;
       uint32_t elapsed = millis() - started;
@@ -455,7 +469,7 @@ struct WebSocketMCP::Transport {
     } else if (final) {
       if (messageOpcode == 1) {
         Message packet{nullptr, message.length(), session.load()};
-        packet.data = static_cast<char *>(p_malloc(packet.length + 1));
+        packet.data = static_cast<char*>(p_malloc(packet.length + 1));
         if (!packet.data) return false;
         memcpy(packet.data, message.c_str(), packet.length + 1);
         if (xQueueSend(incoming, &packet, 0) != pdTRUE) {
@@ -483,16 +497,16 @@ struct WebSocketMCP::Transport {
 
   // Keep a loop's snapshot alive when a user callback calls end() or begin().
   struct Reference {
-    Transport *state;
-    explicit Reference(Transport *value) : state(value) { state->references.fetch_add(1); }
+    Transport* state;
+    explicit Reference(Transport* value) : state(value) { state->references.fetch_add(1); }
     ~Reference() { state->release(); }
-    Reference(const Reference &) = delete;
-    Reference &operator=(const Reference &) = delete;
+    Reference(const Reference&) = delete;
+    Reference& operator=(const Reference&) = delete;
   };
 
   // Own all I/O and buffers; communicate with the main loop only through queues/atomics.
-  static void run(void *argument) {
-    auto *state = static_cast<Transport *>(argument);
+  static void run(void* argument) {
+    auto* state = static_cast<Transport*>(argument);
     while (!state->stop) {
       state->reset = false;
       if (state->connect() && !state->stop && !state->reset) {
@@ -540,7 +554,7 @@ struct WebSocketMCP::Transport {
     }
     state->close();
     state->finished = true; // No more socket or queue work after this publication.
-    state->release(); // The worker never references WebSocketMCP itself.
+    state->release();       // The worker never references WebSocketMCP itself.
     vTaskDelete(nullptr);
   }
 };
@@ -566,8 +580,10 @@ void WebSocketMCP::stopTransport() {
   reapTransport();
   if (_transport) {
     _transport->stop = true;
-    if (_transport->started) _retiring = _transport;
-    else _transport->release();
+    if (_transport->started)
+      _retiring = _transport;
+    else
+      _transport->release();
     _transport = nullptr;
   }
   connected = false;
@@ -577,13 +593,19 @@ void WebSocketMCP::stopTransport() {
 
 // Validate the replacement first. A replacement worker starts from loop() after
 // the previous worker exits, preventing overlapping TLS allocations on reconfigure.
-bool WebSocketMCP::begin(const char *endpoint, ConnectionCallback callback) {
-  auto *state = new (std::nothrow) Transport;
+bool WebSocketMCP::begin(const char* endpoint, ConnectionCallback callback) {
+  auto* state = new (std::nothrow) Transport;
   if (!state) return false;
-  if (!state->parseEndpoint(endpoint)) { state->release(); return false; }
+  if (!state->parseEndpoint(endpoint)) {
+    state->release();
+    return false;
+  }
   state->incoming = xQueueCreate(Transport::QUEUE_LENGTH, sizeof(Transport::Message));
   state->outgoing = xQueueCreate(Transport::QUEUE_LENGTH, sizeof(Transport::Message));
-  if (!state->incoming || !state->outgoing) { state->release(); return false; }
+  if (!state->incoming || !state->outgoing) {
+    state->release();
+    return false;
+  }
   bool wasConnected = connected;
   auto previousCallback = connectionCallback;
   stopTransport();
@@ -600,14 +622,20 @@ bool WebSocketMCP::begin(const char *endpoint, ConnectionCallback callback) {
 }
 
 // Success means accepted into the bounded send queue, not acknowledged by the peer.
-bool WebSocketMCP::sendMessage(const String &message) {
+bool WebSocketMCP::sendMessage(const String& message) {
   if (!_transport || !connected || !_transport->online || _transport->reset || _transport->session != _session) return false;
 
-  if (message.length() > Transport::MAX_MESSAGE) { _transport->reset = true; return false; }
+  if (message.length() > Transport::MAX_MESSAGE) {
+    _transport->reset = true;
+    return false;
+  }
 
   Transport::Message packet{nullptr, message.length(), _session};
-  packet.data = static_cast<char *>(p_malloc(packet.length + 1));
-  if (!packet.data) { _transport->reset = true; return false; }
+  packet.data = static_cast<char*>(p_malloc(packet.length + 1));
+  if (!packet.data) {
+    _transport->reset = true;
+    return false;
+  }
   memcpy(packet.data, message.c_str(), packet.length + 1);
   if (xQueueSend(_transport->outgoing, &packet, 0) == pdTRUE) return true;
   free(packet.data);
@@ -619,7 +647,7 @@ bool WebSocketMCP::sendMessage(const String &message) {
 // and responses after reconnects, and connection notification precedes the first RPC.
 void WebSocketMCP::loop() {
   reapTransport();
-  auto *state = _transport;
+  auto* state = _transport;
   if (!state) return;
 
   state->clockSeconds = toki.second();
@@ -653,8 +681,10 @@ void WebSocketMCP::loop() {
     if (uxQueueSpacesAvailable(state->outgoing) < 2 || xQueueReceive(state->incoming, &packet, 0) != pdTRUE) break;
     if (connected && state->online && !state->reset && packet.session == _session && state->session == _session) {
       String message;
-      if (message.concat(packet.data, packet.length)) handleJsonRpcMessage(message);
-      else state->reset = true;
+      if (message.concat(packet.data, packet.length))
+        handleJsonRpcMessage(message);
+      else
+        state->reset = true;
     }
     free(packet.data);
     if (_transport != state || state->stop || state->reset) return;
@@ -662,7 +692,9 @@ void WebSocketMCP::loop() {
   if (connected && lastPingTime && millis() - lastPingTime > 120000) disconnect();
 }
 
-bool WebSocketMCP::isConnected() { return connected; }
+bool WebSocketMCP::isConnected() {
+  return connected;
+}
 
 // Disabling the usermod must also release its asynchronous network resources.
 void WebSocketMCP::end() {
@@ -679,20 +711,20 @@ void WebSocketMCP::disconnect() {
   if (wasConnected && connectionCallback) connectionCallback(false);
 }
 
-void WebSocketMCP::handleJsonRpcMessage(const String &message) {
+void WebSocketMCP::handleJsonRpcMessage(const String& message) {
   DynamicJsonDocument doc(1024);
   DeserializationError error = deserializeJson(doc, message);
-  
+
   if (error) {
     XIAOZHI_MCP_WARNLN("[xiaozhi-mcp] Failed to parse JSON: " + String(error.c_str()));
     return;
   }
-  
+
   // Check whether this is a ping request
   if (doc.containsKey("method") && doc["method"] == "ping") {
     // Record the last ping time
     lastPingTime = millis();
-    
+
     // Build the pong response - echo the original id without modification
     String id = doc["id"].as<String>();
     XIAOZHI_MCP_DEBUGLN("[xiaozhi-mcp] Received ping request: " + id);
@@ -705,27 +737,27 @@ void WebSocketMCP::handleJsonRpcMessage(const String &message) {
   // Handle initialize requests
   else if (doc.containsKey("method") && doc["method"] == "initialize") {
     String id = doc["id"].as<String>();
-    
-    String serverName = "ESP-HA"; 
+
+    String serverName = "ESP-HA";
 
     // Send the initialize response
-    String response = "{\"jsonrpc\":\"2.0\",\"id\":" + id + 
-      ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"experimental\":{},\"prompts\":{\"listChanged\":false},\"resources\":{\"subscribe\":false,\"listChanged\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"" + serverName + "\",\"version\":\"1.0.0\"}}}";
-    
+    String response = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                      ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"experimental\":{},\"prompts\":{\"listChanged\":false},\"resources\":{\"subscribe\":false,\"listChanged\":false},\"tools\":{\"listChanged\":false}},\"serverInfo\":{\"name\":\"" + serverName + "\",\"version\":\"1.0.0\"}}}";
+
     sendMessage(response);
     XIAOZHI_MCP_DEBUGLN("[xiaozhi-mcp] Responded to initialize request");
-    
+
     // Send the initialized notification
     sendMessage("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
   }
   // Handle tools/list requests
   else if (doc.containsKey("method") && doc["method"] == "tools/list") {
     String id = doc["id"].as<String>();
-    
+
     // This can be customized to match specific requirements
-    String response = "{\"jsonrpc\":\"2.0\",\"id\":" + id + 
-      ",\"result\":{\"tools\":[";
-    
+    String response = "{\"jsonrpc\":\"2.0\",\"id\":" + id +
+                      ",\"result\":{\"tools\":[";
+
     // Build tool metadata from the registered tool list
     if (_tools.size() > 0) {
       for (size_t i = 0; i < _tools.size(); i++) {
@@ -737,9 +769,9 @@ void WebSocketMCP::handleJsonRpcMessage(const String &message) {
         response += "\"inputSchema\":" + _tools[i].inputSchema + "}";
       }
     }
-    
+
     response += "]}}";
-    
+
     sendMessage(response);
     XIAOZHI_MCP_DEBUGLN("[xiaozhi-mcp] Responded to tools/list request, total tools: " + String(_tools.size()));
   }
@@ -748,13 +780,13 @@ void WebSocketMCP::handleJsonRpcMessage(const String &message) {
     int id = doc["id"].as<int>();
     String toolName = doc["params"]["name"].as<String>();
     JsonObject arguments = doc["params"]["arguments"].as<JsonObject>();
-    
+
     XIAOZHI_MCP_DEBUGLN("[xiaozhi-mcp] Received tool call request: " + toolName);
-    
+
     // Find the tool
     bool toolFound = false;
     ToolResponse toolResponse;
-    
+
     for (size_t i = 0; i < _tools.size(); i++) {
       if (_tools[i].name == toolName) {
         toolFound = true;
@@ -762,7 +794,7 @@ void WebSocketMCP::handleJsonRpcMessage(const String &message) {
         if (_tools[i].callback) {
           String argumentsJson;
           serializeJson(arguments, argumentsJson);
-          
+
           // Invoke the callback and retrieve the structured result
           toolResponse = _tools[i].callback(argumentsJson);
         } else {
@@ -771,18 +803,18 @@ void WebSocketMCP::handleJsonRpcMessage(const String &message) {
         break;
       }
     }
-    
+
     if (!toolFound) {
       toolResponse = ToolResponse("{\"error\":\"Tool not found: " + toolName + "\"}", true);
     }
-    
+
     // Build the response
     DynamicJsonDocument responseDoc(2048);
     responseDoc["jsonrpc"] = "2.0";
     responseDoc["id"] = id;
-    
+
     JsonObject result = responseDoc.createNestedObject("result");
-    
+
     JsonArray content = result.createNestedArray("content");
     for (const auto& item : toolResponse.content) {
       JsonObject contentItem = content.createNestedObject();
@@ -791,10 +823,10 @@ void WebSocketMCP::handleJsonRpcMessage(const String &message) {
     }
 
     result["isError"] = toolResponse.isError;
-    
+
     String response;
     serializeJson(responseDoc, response);
-    
+
     sendMessage(response);
     XIAOZHI_MCP_DEBUGLN("[xiaozhi-mcp] Tool call completed: " + toolName + (toolResponse.isError ? " (error)" : ""));
   }
@@ -824,8 +856,8 @@ String WebSocketMCP::escapeJsonString(const String &input) {
 }
 
 // Register a tool with a callback function
-bool WebSocketMCP::registerTool(const String &name, const String &description, 
-                              const String &inputSchema, ToolCallback callback) {
+bool WebSocketMCP::registerTool(const String& name, const String& description,
+                                const String& inputSchema, ToolCallback callback) {
   // Check whether the tool already exists
   for (size_t i = 0; i < _tools.size(); i++) {
     if (_tools[i].name == name) {
@@ -835,34 +867,34 @@ bool WebSocketMCP::registerTool(const String &name, const String &description,
       return true;
     }
   }
-  
+
   // Create a new tool and add it to the list
   Tool newTool;
   newTool.name = name;
   newTool.description = description;
   newTool.inputSchema = inputSchema;
   newTool.callback = callback;
-  
+
   _tools.push_back(newTool);
   XIAOZHI_MCP_DEBUGLN("[xiaozhi-mcp] Successfully registered tool: " + name);
   return true;
 }
 
 // Add a simplified tool registration method
-bool WebSocketMCP::registerSimpleTool(const String &name, const String &description, 
-                                    const String &paramName, const String &paramDesc, 
-                                    const String &paramType, ToolCallback callback) {
+bool WebSocketMCP::registerSimpleTool(const String& name, const String& description,
+                                      const String& paramName, const String& paramDesc,
+                                      const String& paramType, ToolCallback callback) {
   // Build a simple inputSchema
-  String inputSchema = "{\"type\":\"object\",\"properties\":{\"" + 
-                      paramName + "\":{\"type\":\"" + paramType + 
-                      "\",\"description\":\"" + paramDesc + 
-                      "\"}},\"required\":[\"" + paramName + "\"]}";
-                      
+  String inputSchema = "{\"type\":\"object\",\"properties\":{\"" +
+                       paramName + "\":{\"type\":\"" + paramType +
+                       "\",\"description\":\"" + paramDesc +
+                       "\"}},\"required\":[\"" + paramName + "\"]}";
+
   return registerTool(name, description, inputSchema, callback);
 }
 
 // Unregister a tool
-bool WebSocketMCP::unregisterTool(const String &name) {
+bool WebSocketMCP::unregisterTool(const String& name) {
   for (size_t i = 0; i < _tools.size(); i++) {
     if (_tools[i].name == name) {
       _tools.erase(_tools.begin() + i);
@@ -886,7 +918,7 @@ void WebSocketMCP::clearTools() {
 }
 
 // Format a JSON string so each key-value pair appears on its own line
-String WebSocketMCP::formatJsonString(const String &jsonStr) {
+String WebSocketMCP::formatJsonString(const String& jsonStr) {
   // 1. Handle empty strings or invalid JSON
   if (jsonStr.length() == 0) {
     return "{}";
@@ -895,29 +927,29 @@ String WebSocketMCP::formatJsonString(const String &jsonStr) {
   // 2. Attempt to parse JSON to verify validity
   DynamicJsonDocument doc(1024);
   DeserializationError error = deserializeJson(doc, jsonStr);
-  
+
   if (error) {
     // If parsing fails, return the original string
     return jsonStr;
   }
-  
+
   // 3. Initialize the result string
   String result = "{\n";
-  
+
   // 4. Get all keys in the JSON object
   JsonObject obj = doc.as<JsonObject>();
   bool firstItem = true;
-  
+
   // 5. Iterate through each key-value pair in the JSON object
   for (JsonPair p : obj) {
     if (!firstItem) {
       result += ",\n";
     }
     firstItem = false;
-    
+
     // Add two spaces of indentation
     result += "  \"" + String(p.key().c_str()) + "\": ";
-    
+
     // Format the value according to its type
     if (p.value().is<JsonObject>() || p.value().is<JsonArray>()) {
       // For objects or arrays, use serializeJson
@@ -934,10 +966,9 @@ String WebSocketMCP::formatJsonString(const String &jsonStr) {
       result += valueStr;
     }
   }
-  
+
   // 6. Add the closing brace on a new line
   result += "\n}";
-  
+
   return result;
 }
-

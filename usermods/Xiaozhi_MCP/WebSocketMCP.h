@@ -30,32 +30,32 @@
 class WebSocketMCP {
 public:
   // Define the tool response content structure
-  //Sending to WebSocket: {"jsonrpc":"2.0","id":48,"result":{"content":[{"type":"text","text":"{\n  \"success\": true,\n  \"result\": 2\n}"}],"isError":false}}
+  // Sending to WebSocket: {"jsonrpc":"2.0","id":48,"result":{"content":[{"type":"text","text":"{\n  \"success\": true,\n  \"result\": 2\n}"}],"isError":false}}
   struct ToolContentItem {
-    String type;  // Content type, such as "text"
-    String text;  // Text content
+    String type; // Content type, such as "text"
+    String text; // Text content
   };
-  
+
   // Define the tool response structure
   struct ToolResponse {
-    std::vector<ToolContentItem> content;  // Response content array
-    bool isError;                          // Whether this is an error response
-    
+    std::vector<ToolContentItem> content; // Response content array
+    bool isError;                         // Whether this is an error response
+
     // Constructor: create a response from a single text content item
     ToolResponse(const String& textContent, bool error = false) {
       ToolContentItem item;
       item.type = "text";
-      
+
       // Try to detect JSON and format it (by checking for a leading { and trailing })
       String trimmedText = textContent;
       trimmedText.trim();
-      
+
       if (trimmedText.startsWith("{") && trimmedText.endsWith("}")) {
         item.text = WebSocketMCP::formatJsonString(textContent);
       } else {
         item.text = textContent;
       }
-      
+
       content.push_back(item);
       isError = error;
     }
@@ -68,10 +68,10 @@ public:
       content.push_back(item);
       isError = error;
     }
-    
+
     // Default constructor
     ToolResponse() : isError(false) {}
-    
+
     // Create a response from a JSON object (convenience method)
     static ToolResponse fromJson(const JsonObject& json, bool error = false) {
       String jsonStr;
@@ -88,7 +88,7 @@ public:
       valid = !error;
     }
 
-    // NEW: Static factory method from JsonVariantConst
+    // Static factory method from JsonVariantConst
     // This creates a new ToolParams instance by serializing the variant and re-parsing it.
     // Useful for handling items from JsonArray or nested JsonObjects reliably.
     static ToolParams fromVariant(const JsonVariantConst& variant) {
@@ -96,36 +96,36 @@ public:
       serializeJson(variant, variantJson);
       return ToolParams(variantJson);
     }
-    
-    template<typename T>
+
+    template <typename T>
     T get(const String& key, T defaultValue) const {
       if (!valid || !doc.is<JsonObject>() || !doc.as<JsonObjectConst>().containsKey(key)) {
         return defaultValue;
       }
       return doc.as<JsonObjectConst>()[key].as<T>();
     }
-    
+
     JsonVariantConst getJsonValue(const String& key) const {
       if (!valid || !doc.is<JsonObject>() || !doc.as<JsonObjectConst>().containsKey(key)) {
         return JsonVariantConst();
       }
       return doc.as<JsonObjectConst>()[key];
     }
-    
+
     JsonArrayConst getJsonArray(const String& key) const {
       if (!valid || !doc.is<JsonObject>() || !doc.as<JsonObjectConst>().containsKey(key) || !doc.as<JsonObjectConst>()[key].is<JsonArray>()) {
         return JsonArrayConst();
       }
       return doc.as<JsonObjectConst>()[key].as<JsonArrayConst>();
     }
-    
+
     bool isArray(const String& key) const {
       if (!valid || !doc.is<JsonObject>() || !doc.as<JsonObjectConst>().containsKey(key)) {
         return false;
       }
       return doc.as<JsonObjectConst>()[key].is<JsonArray>();
     }
-    
+
     size_t getArraySize(const String& key) const {
       if (!valid || !doc.is<JsonObject>() || !doc.as<JsonObjectConst>().containsKey(key) || !doc.as<JsonObjectConst>()[key].is<JsonArray>()) {
         return 0;
@@ -133,17 +133,17 @@ public:
       return doc.as<JsonObjectConst>()[key].as<JsonArrayConst>().size();
     }
 
-    // NEW: Method to check if the root of this ToolParams' document is a JSON object
+    // Method to check if the root of this ToolParams' document is a JSON object
     bool isJsonObject() const {
       return valid && doc.is<JsonObject>();
     }
 
-    // NEW: Method to check if the root of this ToolParams' document is a JSON array
+    // Method to check if the root of this ToolParams' document is a JSON array
     bool isJsonArray() const {
       return valid && doc.is<JsonArray>();
     }
 
-    // NEW: Method to get the root as a JsonObjectConst if it is one
+    // Method to get the root as a JsonObjectConst if it is one
     JsonObjectConst getAsJsonObject() const {
       if (isJsonObject()) {
         return doc.as<JsonObjectConst>();
@@ -151,18 +151,18 @@ public:
       return JsonObjectConst(); // Returns a null JsonObjectConst
     }
 
-    // NEW: Method to get the root as a JsonArrayConst if it is one
+    // Method to get the root as a JsonArrayConst if it is one
     JsonArrayConst getAsJsonArray() const {
       if (isJsonArray()) {
         return doc.as<JsonArrayConst>();
       }
       return JsonArrayConst(); // Returns a null JsonArrayConst
     }
-    
+
     bool contains(const String& key) const {
       return valid && doc.is<JsonObject>() && doc.as<JsonObjectConst>().containsKey(key);
     }
-    
+
     String getDebugJson() const {
       String result;
       if (valid) {
@@ -172,18 +172,18 @@ public:
       }
       return result;
     }
-    
+
     bool isValid() const {
       return valid;
     }
-    
+
   private:
     DynamicJsonDocument doc{2048}; // Adjust size as needed
     bool valid = false;
   };
 
   // Redefine the tool callback type - accepts a JSON string and returns a ToolResponse
-  typedef std::function<ToolResponse(const String&)> ToolCallback; // updated to accept ToolParams&
+  typedef std::function<ToolResponse(const String&)> ToolCallback;
 
   // Callback type definitions
   // Output callback: void(const String&)
@@ -205,14 +205,14 @@ public:
   // bundle through BearSSL and requires synchronized WLED time. Callbacks run from loop().
   // Heartbeats: 10-second ping/pong intervals, six missed pongs before reconnect.
   // Reconnect attempts are spaced 60 seconds apart, as in the previous transport.
-  bool begin(const char *mcpEndpoint, ConnectionCallback connCb = nullptr);
+  bool begin(const char* mcpEndpoint, ConnectionCallback connCb = nullptr);
 
   /**
    * Send data to the WebSocket server (equivalent to stdin)
    * @param message The message to send
-   * @return Whether the send succeeded
+   * @return Whether the bounded queue accepted the message, not peer delivery
    */
-  bool sendMessage(const String &message);
+  bool sendMessage(const String& message);
 
   /**
    * Process WebSocket events and maintain the connection
@@ -227,7 +227,7 @@ public:
   bool isConnected();
 
   // Static diagnostic text, safe to read from the HTTP task without touching transport state.
-  const char *getConnectionDetail() const { return _connectionDetail.load(); }
+  const char* getConnectionDetail() const { return _connectionDetail.load(); }
 
   /**
    * Disconnect from the server
@@ -237,36 +237,30 @@ public:
   // Stop the worker and automatic reconnection until begin() is called again.
   void end();
 
-  /**
-   * Set the log level and callbacks
-   * @param level Log level
-   * @param logCb Log callback
-   */
-
   // Tool registration and management methods
-  bool registerTool(const String &name, const String &description, const String &inputSchema, ToolCallback callback);
+  bool registerTool(const String& name, const String& description, const String& inputSchema, ToolCallback callback);
   // Simplified tool registration API
-  bool registerSimpleTool(const String &name, const String &description, 
-                          const String &paramName, const String &paramDesc, 
-                          const String &paramType, ToolCallback callback);
-  
-  bool unregisterTool(const String &name);
+  bool registerSimpleTool(const String& name, const String& description,
+                          const String& paramName, const String& paramDesc,
+                          const String& paramType, ToolCallback callback);
+
+  bool unregisterTool(const String& name);
   size_t getToolCount();
   void clearTools();
 
 private:
-  std::atomic<const char *> _connectionDetail{"Stopped"};
+  std::atomic<const char*> _connectionDetail{"Stopped"};
   // The worker owns networking; loop() alone invokes callbacks and MCP tools.
   struct Transport;
-  Transport *_transport = nullptr;
-  Transport *_retiring = nullptr;
+  Transport* _transport = nullptr;
+  Transport* _retiring = nullptr;
   void reapTransport();
   ConnectionCallback connectionCallback = nullptr;
   std::atomic<bool> connected{false};
   uint32_t _session = 0;
   unsigned long lastPingTime = 0;
   void stopTransport();
-  void handleJsonRpcMessage(const String &message);
+  void handleJsonRpcMessage(const String& message);
 
   // Tool structure definition
   struct Tool {
@@ -283,7 +277,7 @@ private:
   String escapeJsonString(const String &input);
   
   // Format a JSON string so each key-value pair appears on its own line
-  static String formatJsonString(const String &jsonStr);
+  static String formatJsonString(const String& jsonStr);
 };
 
 #endif // WEBSOCKET_MCP_H

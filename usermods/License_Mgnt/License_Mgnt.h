@@ -6,6 +6,8 @@
 
 #include "wled.h"
 
+// Keep the existing per-usermod Serial gates: routing these through WLED_DEBUG
+// would change diagnostic output for builds that enable only the module flag.
 // Debug logging control: define LM_UM_DEBUG at build time to enable verbose logs
 #ifdef LM_UM_DEBUG
 #define LM_UM_DEBUGF(...) Serial.printf(__VA_ARGS__)
@@ -28,27 +30,24 @@
 #define USERMOD_ID_LICENSE_MGNT 0xA901
 #endif
 
-class License_Mgnt : public Usermod
-{
+class License_Mgnt : public Usermod {
 public:
   // --- Usermod API ---
-  void setup();
-  void loop();
-  void addToJsonInfo(JsonObject &root);
-  void addToConfig(JsonObject &root);
-  void appendConfigData();
-  bool readFromConfig(JsonObject &root);
-  uint16_t getId() { return USERMOD_ID_LICENSE_MGNT; }
-  const char *getName() { return "License_Mgnt"; }
-
-  // Accessors
+  void setup() override;
+  void loop() override;
+  void addToJsonInfo(JsonObject& root) override;
+  void addToConfig(JsonObject& root) override;
+  void appendConfigData() override;
+  bool readFromConfig(JsonObject& root) override;
+  uint16_t getId() override { return USERMOD_ID_LICENSE_MGNT; }
+  const char* getName() { return "License_Mgnt"; }
 
 private:
-  // --- Config values (editable via JSON/UI) ---
+  // Read-only values exposed in the usermod settings.
   String licenseStatus = "";
   String deviceId = "";
 
-  int8_t devKeyStatus = -1; // 0=valid, -1=not imported, -2=invalid, -3=error
+  int8_t devKeyStatus = -1; // 0=valid, -1=not imported, -2=open error, -3=invalid
   unsigned long lastTime = 0;
   uint8_t counter = 0;
   uint8_t trialMinsLeft = 0;
@@ -58,14 +57,13 @@ private:
   static const char _licenseStatus[];
   static const char _deviceId[];
 
-  const int TIMEOUT_60_SECONDS = 60;
-  const int TIMEOUT_60_MINUTES = 60;
+  static constexpr int TIMEOUT_60_SECONDS = 60;
+  static constexpr int TIMEOUT_60_MINUTES = 60;
 
-  // any private methods should go here (non-inline method should be defined out of class)
-  void publishMqtt(const char *state, bool retain = false); // example for publishing MQTT message
+  void runPeriodicLicenseCheck();
   void warningEffectBeforeReboot();
-  void getDevKeyStatusString(const int8_t devKeyStatus, String &statusStr);
-  String getStoredDeviceKey();
+  static void getDevKeyStatusString(const int8_t devKeyStatus, String& statusStr);
+  static String getStoredDeviceKey();
 
   inline uint8_t getTrialMinsLeft() const { return trialMinsLeft; }
   inline void setTrialMinsLeft(uint8_t mins) { trialMinsLeft = mins; }

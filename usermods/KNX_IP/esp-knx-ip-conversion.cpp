@@ -34,7 +34,11 @@ uint8_t KnxIpCore::unpackScaling(const uint8_t* p, uint8_t len) {
 
 void KnxIpCore::pack2ByteFloat(float value, uint8_t out[2]) {
   if (!out) return;
-  if (isnan(value) || isinf(value)) { out[0] = 0; out[1] = 0; return; }
+  if (isnan(value) || isinf(value)) {
+    out[0] = 0;
+    out[1] = 0;
+    return;
+  }
 
   int sign = (value < 0.f) ? 1 : 0;
   float v = fabsf(value);
@@ -44,7 +48,10 @@ void KnxIpCore::pack2ByteFloat(float value, uint8_t out[2]) {
   int exp = 0;
 
   // Normalize so mant fits into 11 bits (signed)
-  while (mant > 0x07FF) { mant >>= 1; ++exp; }
+  while (mant > 0x07FF) {
+    mant >>= 1;
+    ++exp;
+  }
   if (exp > 0x0F) { // out of range, clamp
     exp = 0x0F;
     mant = 0x07FF;
@@ -64,7 +71,7 @@ float KnxIpCore::unpack2ByteFloat(const uint8_t* p, uint8_t len) {
   uint16_t raw = (uint16_t(p[0]) << 8) | uint16_t(p[1]);
 
   int sign = (raw & 0x8000) ? -1 : 1;
-  int exp  = (raw >> 11) & 0x0F;
+  int exp = (raw >> 11) & 0x0F;
   int mant = (raw & 0x07FF);
 
   // sign-extend 11-bit mantissa
@@ -75,9 +82,12 @@ float KnxIpCore::unpack2ByteFloat(const uint8_t* p, uint8_t len) {
 }
 
 void KnxIpCore::pack4ByteFloat(float value, uint8_t out[4]) {
-  union { float f; uint32_t u; } v;
-  v.f = value;                     // IEEE-754 on ESP32
-  out[0] = (uint8_t)(v.u >> 24);   // big-endian
+  union {
+    float f;
+    uint32_t u;
+  } v;
+  v.f = value;                   // IEEE-754 on ESP32
+  out[0] = (uint8_t)(v.u >> 24); // big-endian
   out[1] = (uint8_t)(v.u >> 16);
   out[2] = (uint8_t)(v.u >> 8);
   out[3] = (uint8_t)(v.u);
@@ -85,7 +95,10 @@ void KnxIpCore::pack4ByteFloat(float value, uint8_t out[4]) {
 
 float KnxIpCore::unpack4ByteFloat(const uint8_t* p, uint8_t len) {
   if (!p || len < 4) return NAN;
-  union { float f; uint32_t u; } v;
-  v.u = (uint32_t(p[0])<<24) | (uint32_t(p[1])<<16) | (uint32_t(p[2])<<8) | uint32_t(p[3]);
+  union {
+    float f;
+    uint32_t u;
+  } v;
+  v.u = (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
   return v.f;
 }
