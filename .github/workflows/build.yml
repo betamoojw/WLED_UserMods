@@ -14,6 +14,21 @@ env:
 
 jobs:
 
+  testKnxControl:
+    name: Test KNX and WLED state paths
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and run production-path regressions
+        run: python tools/test_knx_control.py
+
   get_default_envs:
     name: Gather Environments
     runs-on: ubuntu-latest

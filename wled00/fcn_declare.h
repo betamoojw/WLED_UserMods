@@ -204,6 +204,8 @@ void applyFinalBri();
 void applyValuesToSelectedSegs();
 void colorUpdated(byte callMode);
 void stateUpdated(byte callMode);
+// Explicit source for callers that edit a segment independently of UI selection.
+void stateUpdated(byte callMode, uint8_t sourceSegment);
 void updateInterfaces(uint8_t callMode);
 void handleTransitions();
 void handleNightlight();

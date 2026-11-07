@@ -123,7 +123,7 @@ public:
 
   // Color output mode (to limit traffic)
   // 0 = per-channel only (R,G,B,W,CCT,WW,CW,H,S,V)
-  // 1 = composite only (RGB, HSV, RGBW, plus H/S/V if individually configured?)
+  // 1 = composite only (RGB, HSV, RGBW)
   // 2 = both (default, current behaviour)
   uint8_t colorOutMode = 2;
 
@@ -187,6 +187,20 @@ public:
   void checkGAConflictsAndNotifyGUI();
 
 private:
+  // State snapshots belong to this usermod instance.
+  uint8_t _scheduledBri = 255;
+  bool _scheduledOn = true;
+  uint8_t _scheduledFx = 255;
+  uint8_t _scheduledCct = 255;
+  uint8_t _scheduledR = 255;
+  uint8_t _scheduledG = 255;
+  uint8_t _scheduledB = 255;
+  uint8_t _scheduledW = 255;
+  uint8_t _scheduledPreset = 255;
+  bool _firstSchedule = true;
+  uint16_t _scheduledMain = UINT16_MAX;
+  uint16_t _publishedMain = UINT16_MAX;
+
   // --- TX coalescing flags/timer ---
   unsigned long _nextTxAt = 0;
   bool _pendingTxPower = false, _pendingTxBri = false, _pendingTxFx = false;
@@ -238,6 +252,9 @@ private:
   // Outbound state
   void publishState();
   void scheduleStatePublish();
+  void processPendingState();
+
+  void registerColorHandlers();
 
   // handlers (KNX -> WLED)
   void onKnxPower(bool on);

@@ -1,4 +1,5 @@
 #include "usermod_knx_ip.h"
+#include "knx_control_helpers.h"
 #include "wled.h" // access to global 'strip' and segments
 #include "fcn_declare.h"
 #include "DPT.h"
@@ -92,45 +93,13 @@ static LedProfile detectLedProfileFromSegments() {
 // Track last-sent preset so we only transmit GA_OUT_PRE when it changes  
 static int s_lastPresetSent = -1; // -1 sentinel; currentPreset is byte
 
-// Global state tracking for scheduleStatePublish
-static uint8_t g_lastScheduleBri = 255;    // sentinel
-static bool g_lastScheduleOn = true;       // sentinel
-static uint8_t g_lastScheduleFx = 255;     // sentinel
-static uint8_t g_lastScheduleCct = 255;    // sentinel for CCT
-static uint8_t g_lastScheduleR = 255;      // sentinel for R
-static uint8_t g_lastScheduleG = 255;      // sentinel for G
-static uint8_t g_lastScheduleB = 255;      // sentinel for B
-static uint8_t g_lastScheduleW = 255;      // sentinel for W
-static uint8_t g_lastSchedulePreset = 255; // sentinel for preset
-static bool g_firstCall = true;
 static float g_lastEspTemp = -999.0f;    // sentinel for ESP internal temp
 static float g_lastDallasTemp = -999.0f; // sentinel for Dallas temp
-
-static void getCurrentRGBW(uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& w) {
-  uint32_t c = SEGCOLOR(0); // primary color slot
-  r = R(c);
-  g = G(c);
-  b = B(c);
-  w = W(c);
-}
 
 // single global KNX instance is declared in esp-knx-ip.{h,cpp}
 extern KnxIpCore KNX;
 
 // ------------- helpers -------------
-static inline uint8_t clamp100(uint8_t v) {
-  return (v > 100) ? 100 : v;
-}
-static inline uint8_t pct_to_0_255(uint8_t pct) {
-  return (uint8_t)((pct * 255u + 50u) / 100u);
-}
-static inline uint8_t to_pct_0_100(uint8_t v0_255) {
-  return (uint8_t)((v0_255 * 100u + 127u) / 255u);
-}
-static inline uint8_t clamp8i(int v) {
-  return (uint8_t)(v < 0 ? 0 : (v > 255 ? 255 : v));
-}
-
 // Read one decimal address component, leaving p at its separator or terminator.
 // Keep the existing 1000 cutoff and leading-zero acceptance for both address formats.
 static bool parseAddressComponent(const char*& p, uint32_t& out) {
@@ -874,172 +843,6 @@ void KnxIpUsermod::registerSegmentKOs() {
   KNX_UM_DEBUGF("[KNX-UM] Per-segment KO registration complete\n");
 }
 
-// ---- Small helper registration shims to reduce lambda repetition ----
-// Registers a 1-byte inbound object (if ga!=0) and wires a simple callback taking the first byte.
-static void register1ByteHandler(uint16_t ga, DptMain dpt, std::function<void(uint8_t)> cb) {
-  if (!ga) return;
-  KNX.addGroupObject(ga, dpt, false, true);
-  KNX.onGroup(ga, [cb](uint16_t, DptMain, KnxService svc, const uint8_t* p, uint8_t len) {
-    if (svc == KnxService::GroupValue_Write && p && len >= 1) cb(p[0]);
-  });
-}
-
-// Registers a DPT 5.001 (Scaling 0..100%) inbound object and passes pct (0..100) to cb
-static void registerScalingHandler(uint16_t ga, std::function<void(uint8_t)> cb) {
-  if (!ga) return;
-  KNX.addGroupObject(ga, DptMain::DPT_5xx, false, true);
-  KNX.onGroup(ga, [cb](uint16_t, DptMain, KnxService svc, const uint8_t* p, uint8_t len) {
-    if (svc == KnxService::GroupValue_Write && p && len >= 1) {
-      uint8_t pct = KnxIpCore::unpackScaling(p, len); // 0..255 → 0..100%
-      cb(pct);
-    }
-  });
-}
-
-// Registers a multi-byte inbound object (if ga!=0) and wires a callback taking pointer to payload (len already checked).
-static void registerMultiHandler(uint16_t ga, DptMain dpt, uint8_t minLen, std::function<void(const uint8_t*)> cb) {
-  if (!ga) return;
-  KNX.addGroupObject(ga, dpt, false, true);
-  KNX.onGroup(ga, [cb, minLen](uint16_t, DptMain, KnxService svc, const uint8_t* p, uint8_t len) {
-    if (svc == KnxService::GroupValue_Write && p && len >= minLen) cb(p);
-  });
-}
-
-// --- CCT mapping helpers ---
-uint8_t KnxIpUsermod::kelvinToCct255(uint16_t k) const {
-  uint16_t kmin = kelvinMin;
-  uint16_t kmax = kelvinMax;
-  if (kmin > kmax) {
-    uint16_t t = kmin;
-    kmin = kmax;
-    kmax = t;
-  }
-  if (k <= kmin) return 0;
-  if (k >= kmax) return 255;
-  uint32_t span = (uint32_t)kmax - (uint32_t)kmin;
-  uint32_t pos = (uint32_t)k - (uint32_t)kmin;
-  return (uint8_t)((pos * 255u + (span / 2)) / span);
-}
-
-uint16_t KnxIpUsermod::cct255ToKelvin(uint8_t cct) const {
-  uint16_t kmin = kelvinMin;
-  uint16_t kmax = kelvinMax;
-  if (kmin > kmax) {
-    uint16_t t = kmin;
-    kmin = kmax;
-    kmax = t;
-  }
-  uint32_t span = (uint32_t)kmax - (uint32_t)kmin;
-  return (uint16_t)(kmin + (uint32_t)cct * span / 255u);
-}
-
-// ------------- KNX→WLED handlers -------------
-void KnxIpUsermod::onKnxPower(bool on) {
-  if (on) {
-    if (bri == 0) {
-      bri = (briLast > 0) ? briLast : 128;
-    }
-  } else {
-    briLast = bri;
-    bri = 0;
-  }
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxBrightness(uint8_t pct) {
-  pct = clamp100(pct);
-  bri = pct_to_0_255(pct);
-  if (bri > 0) strip.setBrightness(bri);
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxRGB(uint8_t r, uint8_t g, uint8_t b) {
-  uint8_t cr, cg, cb, cw;
-  getCurrentRGBW(cr, cg, cb, cw);
-  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: R=%d G=%d B=%d <- current setting R=%d G=%d B=%d W=%d\n", r, g, b, cr, cg, cb, cw);
-  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: Current WLED state: bri=%d, on=%d\n", bri, (bri > 0));
-
-  // Auto-enable feature: if brightness is 0 and color changes, set brightness automatically
-  if (autoEnableOnColor && bri == 0 && (r > 0 || g > 0 || b > 0)) {
-    KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: Auto-enable: Color changed while brightness=0, setting brightness to %d\n", autoEnableBrightness);
-    bri = autoEnableBrightness;
-  }
-
-  // Set the color on the segment
-  uint32_t newColor = RGBW32(r, g, b, cw);
-  strip.getMainSegment().setColor(0, newColor);
-
-  // Update global color variables for GUI synchronization
-  colPri[0] = r;
-  colPri[1] = g;
-  colPri[2] = b;
-  colPri[3] = cw;
-  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: segment color and global colPri updated, calling stateUpdated()\n");
-
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
-  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: stateUpdated() called, scheduling state publish\n");
-
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxEffect(uint8_t fxIndex) {
-  strip.getMainSegment().setMode(fxIndex);
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-// ---------------- Relative handlers (DPT 3.007) -----------------
-static uint8_t knx_step_pct(uint8_t stepCode) {
-  uint8_t ret = 0;
-  switch (stepCode) {
-    case 1:
-      ret = 100;
-      break;
-    case 2:
-      ret = 50;
-      break;
-    case 3:
-      ret = 25;
-      break;
-    case 4:
-      ret = 12;
-      break;
-    case 5:
-      ret = 6;
-      break;
-    case 6:
-      ret = 3;
-      break;
-    case 7:
-      ret = 1;
-      break;
-    default:
-      ret = 0;
-      break;
-  }
-  return ret;
-}
-
-static int16_t knx_step_delta(uint8_t nibble, uint16_t maxVal) {
-  // Preserve the existing mapping: only 0x00 stops; 0x08 produces a +1 step.
-  if (nibble == 0) return 0;
-
-  bool inc = ((nibble >> 3) & 0x01) == 1; // bit3 = direction
-  uint8_t sc = nibble & 0x7;
-  uint8_t pct = knx_step_pct(sc);
-  KNX_UM_DEBUGF("[KNX-UM][knx_step_delta] raw:0x%02X ,dir:%d stepCode:%d pct:%d \n", nibble, ((nibble >> 3) & 0x01), sc, pct);
-
-  // use rounding instead of floor
-  uint16_t mag = (uint32_t)maxVal * pct;
-  mag = (mag + 50u) / 100u;
-  if (mag == 0) mag = 1;
-  int16_t ret = inc ? (int16_t)mag : -(int16_t)mag;
-  KNX_UM_DEBUGF("[KNX-UM][knx_step_delta] dir:%s val:%d\n", inc ? "+" : "-", ret);
-  return ret;
-}
-
 #ifdef UNIT_TEST
 // Expose internal helpers for unit tests (pure logic only)
 extern "C" {
@@ -1087,418 +890,6 @@ uint16_t knx_test_cct255_to_kelvin(uint8_t cct) {
 }
 #endif
 
-// Apply a signed channel step and saturate to the byte range.
-static inline uint8_t addClamp255(uint8_t v, int16_t delta) {
-  int nv = (int)v + (int)delta;
-  if (nv < 0)
-    nv = 0;
-  else if (nv > 255)
-    nv = 255;
-  return (uint8_t)nv;
-}
-
-// Adjust split white (warm/cold) by applying delta to one component, recombining to new W & CCT
-void KnxIpUsermod::adjustWhiteSplitRel(int16_t delta, bool adjustWarm) {
-  if (!delta) return;
-  Segment& seg = strip.getSegment(0);
-  uint8_t cct = seg.cct; // 0 warm .. 255 cold ratio
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  if (w == 0 && delta < 0) return; // nothing to decrease
-  // Decompose
-  uint16_t warm = (uint16_t)w * (255 - cct) / 255;
-  uint16_t cold = (uint16_t)w * cct / 255;
-  if (adjustWarm) {
-    int nwarm = (int)warm + delta;
-    if (nwarm < 0)
-      nwarm = 0;
-    else if (nwarm > 255)
-      nwarm = 255;
-    warm = (uint16_t)nwarm;
-  } else {
-    int ncold = (int)cold + delta;
-    if (ncold < 0)
-      ncold = 0;
-    else if (ncold > 255)
-      ncold = 255;
-    cold = (uint16_t)ncold;
-  }
-  uint16_t sum = warm + cold;
-  if (sum > 255) sum = 255; // clip combined
-  uint8_t newW = (uint8_t)sum;
-  uint8_t newCct;
-  if (sum == 0)
-    newCct = cct; // keep previous ratio if all off
-  else {
-    // cold fraction scaled to 0..255
-    newCct = (uint8_t)((cold * 255u + sum / 2) / sum);
-  }
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, newW));
-  seg.cct = newCct;
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxBrightnessRel(uint8_t dpt3) {
-  int16_t d = knx_step_delta(dpt3 & 0x0F, 255);
-  if (!d) return;
-  int val = (int)bri + d;
-  if (val < 0)
-    val = 0;
-  else if (val > 255)
-    val = 255;
-  bri = (uint8_t)val;
-  if (bri > 0) strip.setBrightness(bri);
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxColorRel(uint8_t channel, uint8_t dpt3) {
-  if (channel > 3) return;
-  int16_t d = knx_step_delta(dpt3 & 0x0F, 255);
-  if (!d) return;
-
-  uint8_t rgbw[4];
-  getCurrentRGBW(rgbw[0], rgbw[1], rgbw[2], rgbw[3]);
-  KNX_UM_DEBUGF("[KNX-UM] onKnxColorRel: current setting R=%d G=%d B=%d W=%d\n", rgbw[0], rgbw[1], rgbw[2], rgbw[3]);
-  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: Current WLED state: bri=%d, on=%d\n", bri, (bri > 0));
-
-  rgbw[channel] = addClamp255(rgbw[channel], d);
-  strip.getMainSegment().setColor(0, RGBW32(rgbw[0], rgbw[1], rgbw[2], rgbw[3]));
-  KNX_UM_DEBUGF("[KNX-UM] onKnxColorRel: new setting R=%d G=%d B=%d W=%d\n", rgbw[0], rgbw[1], rgbw[2], rgbw[3]);
-
-  // Update global color variables for GUI synchronization
-  colPri[0] = rgbw[0];
-  colPri[1] = rgbw[1];
-  colPri[2] = rgbw[2];
-  colPri[3] = rgbw[3];
-  KNX_UM_DEBUGF("[KNX-UM] onKnxRGB: segment color and global colPri updated, calling stateUpdated()\n");
-
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
-  KNX_UM_DEBUGF("[KNX-UM] onKnxColorRel: stateUpdated() called, scheduling state publish\n");
-
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxWhiteRel(uint8_t dpt3) {
-  onKnxColorRel(3, dpt3);
-}
-
-void KnxIpUsermod::onKnxWWRel(uint8_t dpt3) {
-  adjustWhiteSplitRel(knx_step_delta(dpt3 & 0x0F, 255), true);
-}
-
-void KnxIpUsermod::onKnxCWRel(uint8_t dpt3) {
-  adjustWhiteSplitRel(knx_step_delta(dpt3 & 0x0F, 255), false);
-}
-
-void KnxIpUsermod::onKnxHueRel(uint8_t dpt3) {
-  int16_t d = knx_step_delta(dpt3 & 0x0F, 30); // max 30-degree jump for 100%
-  if (!d) return;
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  float h, s, v;
-  rgbToHsv(r, g, b, h, s, v);
-  h += (float)d;
-  while (h < 0) h += 360.f;
-  while (h >= 360.f) h -= 360.f;
-  applyHSV(h, s, v, true);
-}
-
-void KnxIpUsermod::onKnxSatRel(uint8_t dpt3) {
-  int16_t d = knx_step_delta(dpt3 & 0x0F, 255);
-  if (!d) return;
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  float h, s, v;
-  rgbToHsv(r, g, b, h, s, v);
-  s += (float)d / 255.f;
-  if (s < 0) s = 0;
-  if (s > 1) s = 1;
-  applyHSV(h, s, v, true);
-}
-
-void KnxIpUsermod::onKnxValRel(uint8_t dpt3) {
-  int16_t d = knx_step_delta(dpt3 & 0x0F, 255);
-  if (!d) return;
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  float h, s, v;
-  rgbToHsv(r, g, b, h, s, v);
-  v += (float)d / 255.f;
-  if (v < 0) v = 0;
-  if (v > 1) v = 1;
-  applyHSV(h, s, v, true);
-}
-
-void KnxIpUsermod::onKnxEffectRel(uint8_t dpt3) {
-  int16_t d = knx_step_delta(dpt3 & 0x0F, 10);
-  if (!d) return;
-  int count = strip.getModeCount();
-  int cur = (int)effectCurrent + d;
-  if (cur < 0)
-    cur = 0;
-  else if (cur >= count)
-    cur = count - 1;
-  onKnxEffect((uint8_t)cur);
-}
-
-// ---- Composite relative handlers (multi-byte, each byte low nibble = DPT 3.007) ----
-// RGB relative: 3 bytes [Rctl, Gctl, Bctl]
-void KnxIpUsermod::onKnxRGBRel(uint8_t rCtl, uint8_t gCtl, uint8_t bCtl) {
-  int16_t dr = knx_step_delta(rCtl & 0x0F, 255);
-  int16_t dg = knx_step_delta(gCtl & 0x0F, 255);
-  int16_t db = knx_step_delta(bCtl & 0x0F, 255);
-  if (!dr && !dg && !db) return; // nothing changed
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  if (dr) r = addClamp255(r, dr);
-  if (dg) g = addClamp255(g, dg);
-  if (db) b = addClamp255(b, db);
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, w));
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-// HSV relative: 3 bytes [Hctl, Sctl, Vctl]
-void KnxIpUsermod::onKnxHSVRel(uint8_t hCtl, uint8_t sCtl, uint8_t vCtl) {
-  int16_t dh = knx_step_delta(hCtl & 0x0F, 30);  // same 30° max jump used in single Hue rel
-  int16_t ds = knx_step_delta(sCtl & 0x0F, 255); // work in 0..255 domain then scale
-  int16_t dv = knx_step_delta(vCtl & 0x0F, 255);
-  if (!dh && !ds && !dv) return;
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  float h, s, v;
-  rgbToHsv(r, g, b, h, s, v);
-  if (dh) {
-    h += (float)dh;
-    while (h < 0) h += 360.f;
-    while (h >= 360.f) h -= 360.f;
-  }
-  if (ds) {
-    s += (float)ds / 255.f;
-    if (s < 0) s = 0;
-    if (s > 1) s = 1;
-  }
-  if (dv) {
-    v += (float)dv / 255.f;
-    if (v < 0) v = 0;
-    if (v > 1) v = 1;
-  }
-  applyHSV(h, s, v, true); // preserves existing white and publishes
-}
-
-// RGBW relative: 4 (or 6) bytes [Rctl,Gctl,Bctl,Wctl,(ext...)]
-void KnxIpUsermod::onKnxRGBWRel(uint8_t rCtl, uint8_t gCtl, uint8_t bCtl, uint8_t wCtl) {
-  int16_t dr = knx_step_delta(rCtl & 0x0F, 255);
-  int16_t dg = knx_step_delta(gCtl & 0x0F, 255);
-  int16_t db = knx_step_delta(bCtl & 0x0F, 255);
-  int16_t dw = knx_step_delta(wCtl & 0x0F, 255);
-  if (!dr && !dg && !db && !dw) return; // nothing changed
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  if (dr) r = addClamp255(r, dr);
-  if (dg) g = addClamp255(g, dg);
-  if (db) b = addClamp255(b, db);
-  if (dw) w = addClamp255(w, dw);
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, w));
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxPreset(uint8_t preset) {
-  _lastPreset = preset; // remember for status OUT
-  applyPreset(preset);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxWhite(uint8_t v) { // 0..255 (DPT 5.010)
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, v));
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxCct(uint16_t kelvin) { // Kelvin (DPT 7.600)
-  Segment& seg = strip.getSegment(0);
-  seg.cct = kelvinToCct255(kelvin);
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::applyWhiteAndCct() {
-  uint8_t r,g,b,w; getCurrentRGBW(r,g,b,w);
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, w)); // W is already part of color; CCT is separate
-  // CCT is stored on the segment
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
-}
-
-void KnxIpUsermod::onKnxWW(uint8_t v) { // 0..255 (DPT 5.010)
-  const Segment& seg = strip.getSegment(0);
-  const uint8_t wLive = W(seg.colors[0]);
-  const uint8_t cctLive = seg.cct;
-
-  uint8_t cw = (uint8_t)(((uint16_t)wLive * cctLive + 127u) / 255u);
-  uint16_t sum = (uint16_t)v + (uint16_t)cw;
-
-  uint8_t newW = (sum > 255) ? 255 : (uint8_t)sum;
-  uint8_t newCct = (sum == 0) ? cctLive : (uint8_t)((cw * 255u + sum / 2) / sum);
-
-  // apply
-  uint8_t r, g, b, _w;
-  getCurrentRGBW(r, g, b, _w);
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, newW));
-  strip.getSegment(0).cct = newCct;
-
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxCW(uint8_t v) { // 0..255 (DPT 5.010)
-  const Segment& seg = strip.getSegment(0);
-  const uint8_t wLive = W(seg.colors[0]);
-  const uint8_t cctLive = seg.cct;
-
-  uint8_t ww = (uint8_t)(((uint16_t)wLive * (255u - cctLive) + 127u) / 255u);
-  uint16_t sum = (uint16_t)ww + (uint16_t)v;
-
-  uint8_t newW = (sum > 255) ? 255 : (uint8_t)sum;
-  uint8_t newCct = (sum == 0) ? cctLive : (uint8_t)((v * 255u + sum / 2) / sum);
-
-  // apply
-  uint8_t r, g, b, _w;
-  getCurrentRGBW(r, g, b, _w);
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, newW));
-  strip.getSegment(0).cct = newCct;
-
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxRGBW(uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, w));
-  colorUpdated(CALL_MODE_DIRECT_CHANGE);
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::hsvToRgb(float h, float s, float v, uint8_t& r, uint8_t& g, uint8_t& b) {
-  if (s <= 0.f) {
-    r = g = b = clamp8i((int)roundf(v * 255.f));
-    return;
-  }
-  while (h < 0.f) h += 360.f;
-  while (h >= 360.f) h -= 360.f;
-  float c = v * s;
-  float x = c * (1.f - fabsf(fmodf(h / 60.f, 2.f) - 1.f));
-  float m = v - c;
-  float rf = 0, gf = 0, bf = 0;
-  if (h < 60) {
-    rf = c;
-    gf = x;
-    bf = 0;
-  } else if (h < 120) {
-    rf = x;
-    gf = c;
-    bf = 0;
-  } else if (h < 180) {
-    rf = 0;
-    gf = c;
-    bf = x;
-  } else if (h < 240) {
-    rf = 0;
-    gf = x;
-    bf = c;
-  } else if (h < 300) {
-    rf = x;
-    gf = 0;
-    bf = c;
-  } else {
-    rf = c;
-    gf = 0;
-    bf = x;
-  }
-  r = clamp8i((int)roundf((rf + m) * 255.f));
-  g = clamp8i((int)roundf((gf + m) * 255.f));
-  b = clamp8i((int)roundf((bf + m) * 255.f));
-}
-
-void KnxIpUsermod::rgbToHsv(uint8_t r, uint8_t g, uint8_t b, float& h, float& s, float& v) {
-  float rf = r / 255.f, gf = g / 255.f, bf = b / 255.f;
-  float cmax = fmaxf(rf, fmaxf(gf, bf));
-  float cmin = fminf(rf, fminf(gf, bf));
-  float delta = cmax - cmin;
-  // Hue
-  if (delta == 0.f)
-    h = 0.f;
-  else if (cmax == rf)
-    h = 60.f * fmodf(((gf - bf) / delta), 6.f);
-  else if (cmax == gf)
-    h = 60.f * (((bf - rf) / delta) + 2.f);
-  else
-    h = 60.f * (((rf - gf) / delta) + 4.f);
-  if (h < 0.f) h += 360.f;
-  // Saturation
-  s = (cmax == 0.f) ? 0.f : (delta / cmax);
-  // Value
-  v = cmax;
-}
-
-void KnxIpUsermod::applyHSV(float hDeg, float s01, float v01, bool preserveWhite) {
-  uint8_t r, g, b;
-  hsvToRgb(hDeg, 101 - s01, 101 - v01, r, g, b);
-  // onKnxRGB(r, g, b); // reuse existing handler to ensure consistency
-  uint8_t cr, cg, cb, cw;
-  getCurrentRGBW(cr, cg, cb, cw);
-  if (!preserveWhite) cw = 0; // optional future use; currently always true
-  KNX_UM_DEBUGF("[KNX-UM] applyHSV: R=%d G=%d B=%d <- current setting R=%d G=%d B=%d W=%d\n", r, g, b, cr, cg, cb, cw);
-  KNX_UM_DEBUGF("[KNX-UM] applyHSV: Current WLED state: bri=%d, on=%d\n", bri, (bri > 0));
-
-  // Auto-enable feature: if brightness is 0 and color changes, set brightness automatically
-  if (autoEnableOnColor && bri == 0 && (r > 0 || g > 0 || b > 0)) {
-    KNX_UM_DEBUGF("[KNX-UM] applyHSV: Auto-enable: Color changed while brightness=0, setting brightness to %d\n", autoEnableBrightness);
-    bri = autoEnableBrightness;
-  }
-
-  strip.getMainSegment().setColor(0, RGBW32(r, g, b, cw));
-
-  // Update global color variables for GUI synchronization
-  colPri[0] = r;
-  colPri[1] = g;
-  colPri[2] = b;
-  colPri[3] = cw;
-  KNX_UM_DEBUGF("[KNX-UM] applyHSV: segment color and global colPri updated, calling stateUpdated()\n");
-
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
-  KNX_UM_DEBUGF("[KNX-UM] applyHSV: stateUpdated() called, scheduling state publish\n");
-
-  scheduleStatePublish();
-}
-
-void KnxIpUsermod::onKnxH(float hDeg) {
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  float ch, cs, cv;
-  rgbToHsv(r, g, b, ch, cs, cv);
-  applyHSV(hDeg, cs, cv, true);
-}
-
-void KnxIpUsermod::onKnxS(float s01) {
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  float ch, cs, cv;
-  rgbToHsv(r, g, b, ch, cs, cv);
-  applyHSV(ch, s01, cv, true);
-}
-
-void KnxIpUsermod::onKnxV(float v01) {
-  uint8_t r, g, b, w;
-  getCurrentRGBW(r, g, b, w);
-  float ch, cs, cv;
-  rgbToHsv(r, g, b, ch, cs, cv);
-  applyHSV(ch, cs, v01, true);
-}
-
 // Per-segment KO handlers
 void KnxIpUsermod::onKnxSegmentPower(uint8_t segmentIndex, bool on) {
   if (segmentIndex >= strip.getSegmentsNum()) return;
@@ -1507,7 +898,7 @@ void KnxIpUsermod::onKnxSegmentPower(uint8_t segmentIndex, bool on) {
   segment.on = on;
 
   KNX_UM_DEBUGF("[KNX-UM] Segment %d power: %s\n", segmentIndex, on ? "ON" : "OFF");
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
+  stateUpdated(CALL_MODE_DIRECT_CHANGE, segmentIndex);
   // Note: Don't call scheduleStatePublish() to avoid feedback loops
 }
 
@@ -1522,7 +913,7 @@ void KnxIpUsermod::onKnxSegmentBrightness(uint8_t segmentIndex, uint8_t pct) {
   if (bri255 > 0) segment.on = true;
 
   KNX_UM_DEBUGF("[KNX-UM] Segment %d brightness: %d%% (%d/255)\n", segmentIndex, pct, bri255);
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
+  stateUpdated(CALL_MODE_DIRECT_CHANGE, segmentIndex);
 }
 
 void KnxIpUsermod::onKnxSegmentRGB(uint8_t segmentIndex, uint8_t r, uint8_t g, uint8_t b) {
@@ -1535,7 +926,7 @@ void KnxIpUsermod::onKnxSegmentRGB(uint8_t segmentIndex, uint8_t r, uint8_t g, u
   segment.setColor(0, RGBW32(r, g, b, w));
 
   KNX_UM_DEBUGF("[KNX-UM] Segment %d RGB: R=%d G=%d B=%d\n", segmentIndex, r, g, b);
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
+  stateUpdated(CALL_MODE_DIRECT_CHANGE, segmentIndex);
 }
 
 void KnxIpUsermod::onKnxSegmentEffect(uint8_t segmentIndex, uint8_t fxIndex) {
@@ -1545,7 +936,7 @@ void KnxIpUsermod::onKnxSegmentEffect(uint8_t segmentIndex, uint8_t fxIndex) {
   segment.mode = fxIndex;
 
   KNX_UM_DEBUGF("[KNX-UM] Segment %d effect: %d\n", segmentIndex, fxIndex);
-  stateUpdated(CALL_MODE_DIRECT_CHANGE);
+  stateUpdated(CALL_MODE_DIRECT_CHANGE, segmentIndex);
 }
 
 bool KnxIpUsermod::readEspInternalTempC(float& outC) const {
@@ -1596,7 +987,7 @@ void KnxIpUsermod::publishTemperatureIfChanged() {
     float tEsp;
     if (readEspInternalTempC(tEsp)) {
       // Compare with last published value (with 0.1°C tolerance for floating point)
-      if (g_firstCall || fabs(tEsp - g_lastEspTemp) >= 0.05f) {
+      if (_firstSchedule || fabs(tEsp - g_lastEspTemp) >= 0.05f) {
         uint8_t buf[4];
         KnxIpCore::pack4ByteFloat(tEsp, buf);
         bool ok = KNX.groupValueWrite(GA_OUT_INT_TEMP, buf, 4);
@@ -1613,7 +1004,7 @@ void KnxIpUsermod::publishTemperatureIfChanged() {
     float tDallas;
     if (readDallasTempC(tDallas)) {
       // Compare with last published value (with 0.1°C tolerance for floating point)
-      if (g_firstCall || fabs(tDallas - g_lastDallasTemp) >= 0.05f) {
+      if (_firstSchedule || fabs(tDallas - g_lastDallasTemp) >= 0.05f) {
         uint8_t buf[4];
         KnxIpCore::pack4ByteFloat(tDallas, buf);
         bool ok = KNX.groupValueWrite(GA_OUT_TEMP, buf, 4);
@@ -1625,7 +1016,7 @@ void KnxIpUsermod::publishTemperatureIfChanged() {
     }
   }
 
-  if (!anyTempChanged && !g_firstCall) {
+  if (!anyTempChanged && !_firstSchedule) {
     KNX_UM_DEBUGF("[KNX-UM][TEMP] No temperature changes detected - skipping publish\n");
   }
 }
@@ -2283,107 +1674,8 @@ void KnxIpUsermod::setup() {
     register1ByteHandler(GA_IN_CW, DptMain::DPT_5xx, [this](uint8_t v) { onKnxCW(v); });
   }
 
-  if (GA_IN_RGB) {
-    KNX_UM_DEBUGF("[KNX-UM] DEBUG: Registering RGB handler for GA 0x%04X\n", GA_IN_RGB);
-    registerMultiHandler(GA_IN_RGB, DptMain::DPT_232xx, 3, [this](const uint8_t* p) {
-      KNX_UM_DEBUGF("[KNX-UM] DEBUG: RGB callback triggered with data: %02X %02X %02X\n", p[0], p[1], p[2]);
-      onKnxRGB(p[0], p[1], p[2]);
-    });
-  } else {
-    KNX_UM_DEBUGF("[KNX-UM] DEBUG: GA_IN_RGB is 0, not registering RGB handler\n");
-  }
-  if (GA_IN_HSV) {
-    KNX_UM_DEBUGF("[KNX-UM] DEBUG: Registering HSV handler for GA 0x%04X\n", GA_IN_HSV);
-    registerMultiHandler(GA_IN_HSV, DptMain::DPT_232xx, 3, [this](const uint8_t* p) {
-      KNX_UM_DEBUGF("[KNX-UM] DEBUG: HSV callback triggered with data: %02X %02X %02X in hex\n", p[0], p[1], p[2]);
-      float h = byteToHueDeg(p[0]);
-      float s = byteToPct01(p[1]);
-      float v = byteToPct01(p[2]);
-      // Print HSV as integers: Hue (degrees) and S/V as percent (0..100)
-      KNX_UM_DEBUGF("[KNX-UM] DEBUG: HSV callback triggered with data: %d %d %d in decimal\n",
-                    (int)(h + 0.5f), (int)(s * 100.0f + 0.5f), (int)(v * 100.0f + 0.5f));
-      applyHSV(h, s, v, true);
-    });
-  } else {
-    KNX_UM_DEBUGF("[KNX-UM] DEBUG: GA_IN_HSV is 0, not registering HSV handler\n");
-  }
+  registerColorHandlers();
 
-  if (GA_IN_RGBW) {
-    registerMultiHandler(GA_IN_RGBW, DptMain::DPT_251xx, 4, [this](const uint8_t* p) { onKnxRGBW(p[0], p[1], p[2], p[3]); });
-  }
-  if (GA_IN_RGB_REL) {
-    registerMultiHandler(GA_IN_RGB_REL, DptMain::DPT_232xx, 3, [this](const uint8_t* p) { onKnxRGBRel(p[0], p[1], p[2]); });
-  }
-  if (GA_IN_HSV_REL) {
-    registerMultiHandler(GA_IN_HSV_REL, DptMain::DPT_232xx, 3, [this](const uint8_t* p) { onKnxHSVRel(p[0], p[1], p[2]); });
-  }
-  if (GA_IN_RGBW_REL) {
-    registerMultiHandler(GA_IN_RGBW_REL, DptMain::DPT_251xx, 4, [this](const uint8_t* p) { onKnxRGBWRel(p[0], p[1], p[2], p[3]); });
-  }
-  if (GA_IN_H) {
-    register1ByteHandler(GA_IN_H, DptMain::DPT_5xx, [this](uint8_t v) { onKnxH(byteToHueDeg(v)); });
-  }
-  if (GA_IN_S) {
-    register1ByteHandler(GA_IN_S, DptMain::DPT_5xx, [this](uint8_t v) { onKnxS(byteToPct01(v)); });
-  }
-  if (GA_IN_V) {
-    register1ByteHandler(GA_IN_V, DptMain::DPT_5xx, [this](uint8_t v) { onKnxV(byteToPct01(v)); });
-  }
-  if (GA_IN_BRI_REL) {
-    KNX.addGroupObject(GA_IN_BRI_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_BRI_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) {
-#ifdef KNX_UM_DEBUG
-      KNX_UM_DEBUG("[KNX-UM] KNX payload: ");
-      for (uint8_t i = 0; i < l; ++i) {
-        if (p[i] < 0x10) KNX_UM_DEBUG("0");
-        KNX_UM_DEBUG(p[i], HEX);
-        KNX_UM_DEBUG(" ");
-      }
-      KNX_UM_DEBUGLN();
-#endif
-      if (s == KnxService::GroupValue_Write && l >= 1) onKnxBrightnessRel(p[0]);
-    });
-  }
-  if (GA_IN_R_REL) {
-    KNX.addGroupObject(GA_IN_R_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_R_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxColorRel(0,p[0]); });
-  }
-  if (GA_IN_G_REL) {
-    KNX.addGroupObject(GA_IN_G_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_G_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxColorRel(1,p[0]); });
-  }
-  if (GA_IN_B_REL) {
-    KNX.addGroupObject(GA_IN_B_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_B_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxColorRel(2,p[0]); });
-  }
-  if (GA_IN_W_REL) {
-    KNX.addGroupObject(GA_IN_W_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_W_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxWhiteRel(p[0]); });
-  }
-  if (GA_IN_WW_REL) {
-    KNX.addGroupObject(GA_IN_WW_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_WW_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxWWRel(p[0]); });
-  }
-  if (GA_IN_CW_REL) {
-    KNX.addGroupObject(GA_IN_CW_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_CW_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxCWRel(p[0]); });
-  }
-  if (GA_IN_H_REL) {
-    KNX.addGroupObject(GA_IN_H_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_H_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxHueRel(p[0]); });
-  }
-  if (GA_IN_S_REL) {
-    KNX.addGroupObject(GA_IN_S_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_S_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxSatRel(p[0]); });
-  }
-  if (GA_IN_V_REL) {
-    KNX.addGroupObject(GA_IN_V_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_V_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxValRel(p[0]); });
-  }
-  if (GA_IN_FX_REL) {
-    KNX.addGroupObject(GA_IN_FX_REL, DptMain::DPT_3xx, false, true);
-    KNX.onGroup(GA_IN_FX_REL, [this](uint16_t, DptMain, KnxService s, const uint8_t* p, uint8_t l) { if (s==KnxService::GroupValue_Write && l>=1) onKnxEffectRel(p[0]); });
-  }
   // DPT 10.001 TimeOfDay (3 bytes)
   if (GA_IN_TIME) {
     KNX.addGroupObject(GA_IN_TIME, DptMain::DPT_10xx, /*tx=*/false, /*rx=*/true);
@@ -2566,249 +1858,6 @@ void KnxIpUsermod::setup() {
   checkGAConflictsAndNotifyGUI();
 }
 
-void KnxIpUsermod::publishState() {
-  // Safety check: ensure KNX is running before any operations
-  if (!enabled || !KNX.running()) {
-    KNX_UM_DEBUGF("[KNX-UM] publishState() aborted - KNX not running (enabled=%d, running=%d)\n",
-                  enabled, KNX.running());
-    return;
-  }
-  _publishSeq++;
-  KNX_UM_DEBUGF("[KNX-UM] publishState(seq=%lu at %lums) pendingFlags: PWR=%d BRI=%d FX=%d COLOR=%d PRE=%d\n",
-                (unsigned long)_publishSeq, millis(), _pendingTxPower, _pendingTxBri, _pendingTxFx, _pendingTxColor, _pendingTxPreset);
-
-  // If nothing is pending and no OUT GAs are configured, bail early
-  const bool anyPending = _pendingTxPower || _pendingTxBri || _pendingTxFx;
-  const bool anyColorOut = (GA_OUT_R || GA_OUT_G || GA_OUT_B || GA_OUT_W || GA_OUT_CCT || GA_OUT_WW || GA_OUT_CW);
-
-  // Current (live) state snapshot
-  const Segment& seg = strip.getSegment(0);
-  const uint32_t c = seg.colors[0];
-  const uint8_t r = R(c), g = G(c), b = B(c), w = W(c);
-  const uint8_t cct = seg.cct; // 0..255 (0=warm .. 255=cold)
-
-  // Compute which OUT objects actually changed since the last published snapshot
-  const bool chR = GA_OUT_R && (r != LAST_R);
-  const bool chG = GA_OUT_G && (g != LAST_G);
-  const bool chB = GA_OUT_B && (b != LAST_B);
-  const bool chW = GA_OUT_W && (w != LAST_W);
-  const bool chCct = GA_OUT_CCT && (cct != LAST_CCT);
-
-  // Derived warm/cold components from W and CCT (compare to last)
-  const uint8_t ww = (uint8_t)((uint16_t)w * (255u - cct) / 255u);
-  const uint8_t cw = (uint8_t)((uint16_t)w * cct / 255u);
-  const uint8_t lastWw = (uint8_t)((uint16_t)LAST_W * (255u - LAST_CCT) / 255u);
-  const uint8_t lastCw = (uint8_t)((uint16_t)LAST_W * LAST_CCT / 255u);
-  const bool chWW = GA_OUT_WW && (ww != lastWw);
-  const bool chCW = GA_OUT_CW && (cw != lastCw);
-
-  const bool anyColorChanged = chR || chG || chB || chW || chCct || chWW || chCW;
-
-  if (!anyPending && !_pendingTxColor && !_pendingTxPreset) {
-    KNX_UM_DEBUGLN("[KNX-UM] publishState() early exit - nothing configured pending");
-    return;
-  }
-
-  // Base state
-  const bool pwr = (bri > 0);
-  const uint8_t pct = (uint8_t)((bri * 100u + 127u) / 255u); // 0..100 (DPT 5.001)
-  const uint8_t fxIndex = effectCurrent;                     // 0..255
-
-  // Pending (coalesced) telegrams
-  if (_pendingTxPower && GA_OUT_PWR) KNX.write1Bit(GA_OUT_PWR, pwr);  // DPT 1.001
-  if (_pendingTxBri && GA_OUT_BRI) KNX.writeScaling(GA_OUT_BRI, pct); // DPT 5.001
-  if (_pendingTxFx && GA_OUT_FX) {
-    uint8_t v = fxIndex; // DPT 5.xxx raw
-    KNX.groupValueWrite(GA_OUT_FX, &v, 1);
-  }
-
-  // Colors / White / CCT / WW / CW — only if changed
-  if (_pendingTxColor && anyColorOut && colorOutMode != 1) { // per-channel
-    KNX_UM_DEBUGF("[KNX-UM] Color change flags R=%d G=%d B=%d W=%d CCT=%d WW=%d CW=%d (anyColorChanged=%d)\n",
-                  chR, chG, chB, chW, chCct, chWW, chCW, anyColorChanged);
-    if (chR) {
-      uint8_t v = r;
-      KNX.groupValueWrite(GA_OUT_R, &v, 1);
-    }
-    if (chG) {
-      uint8_t v = g;
-      KNX.groupValueWrite(GA_OUT_G, &v, 1);
-    }
-    if (chB) {
-      uint8_t v = b;
-      KNX.groupValueWrite(GA_OUT_B, &v, 1);
-    }
-    if (chW) {
-      uint8_t v = w;
-      KNX.groupValueWrite(GA_OUT_W, &v, 1);
-    }
-    if (chCct) {
-      uint16_t kelvin = cct255ToKelvin(cct);                                   // DPT 7.600
-      uint8_t payload[2] = {(uint8_t)(kelvin >> 8), (uint8_t)(kelvin & 0xFF)}; // big-endian
-      KNX.groupValueWrite(GA_OUT_CCT, payload, 2);
-    }
-    if (chWW) {
-      uint8_t v = ww;
-      KNX.groupValueWrite(GA_OUT_WW, &v, 1);
-    }
-    if (chCW) {
-      uint8_t v = cw;
-      KNX.groupValueWrite(GA_OUT_CW, &v, 1);
-    }
-  }
-
-  if (_pendingTxColor && anyColorChanged && colorOutMode != 0) { // composites
-    // Snapshot again (already have r,g,b,w,cct)
-    // 1) RGB (DPST-232-600) 3 bytes
-    if (GA_OUT_RGB) {
-      uint8_t rgb[3] = {r, g, b};
-      KNX.groupValueWrite(GA_OUT_RGB, rgb, 3);
-    }
-    // 2) HSV (DPST-232-600) 3 bytes: [H_byte, S_byte, V_byte]
-    float hDeg, s01, v01;
-    rgbToHsv(r, g, b, hDeg, s01, v01);
-    if (GA_OUT_HSV) {
-      uint8_t hsv[3] = {hueDegToByte(hDeg), pct01ToByte(s01), pct01ToByte(v01)};
-      KNX.groupValueWrite(GA_OUT_HSV, hsv, 3);
-    }
-    // 3) RGBW (DPST-251-600) 6 bytes: [R,G,B,W,0,0]
-    if (GA_OUT_RGBW) {
-      uint8_t rgbw[6] = {r, g, b, w, 0x00, 0x00};
-      KNX.groupValueWrite(GA_OUT_RGBW, rgbw, 6);
-    }
-    // 4) Individual H/S/V (1 byte each)
-    if (GA_OUT_H) {
-      uint8_t hb = hueDegToByte(hDeg);
-      KNX.groupValueWrite(GA_OUT_H, &hb, 1);
-    }
-    if (GA_OUT_S) {
-      uint8_t sb = pct01ToByte(s01);
-      KNX.groupValueWrite(GA_OUT_S, &sb, 1);
-    }
-    if (GA_OUT_V) {
-      uint8_t vb = pct01ToByte(v01);
-      KNX.groupValueWrite(GA_OUT_V, &vb, 1);
-    }
-  }
-
-  if (_pendingTxPreset && GA_OUT_PRE) {
-    KNX.groupValueWrite(GA_OUT_PRE, &_lastPreset, 1);
-  }
-
-  // Publish temperature only if it actually changed
-  publishTemperatureIfChanged();
-
-  // Update “last published” snapshot for color/CCT
-  LAST_R = r;
-  LAST_G = g;
-  LAST_B = b;
-  LAST_W = w;
-  LAST_CCT = cct;
-
-  // Clear pending flags after publish
-  _pendingTxPower = _pendingTxBri = _pendingTxFx = false;
-  _pendingTxColor = false;
-  _pendingTxPreset = false;
-  KNX_UM_DEBUGF("[KNX-UM] publishState(seq=%lu) done. Snapshot R=%u G=%u B=%u W=%u CCT=%u bri=%u on=%u\n",
-                (unsigned long)_publishSeq, r, g, b, w, cct, bri, (bri > 0));
-}
-
-void KnxIpUsermod::scheduleStatePublish() {
-  // Safety check: don't schedule if KNX is not running
-  if (!enabled || !KNX.running()) {
-    KNX_UM_DEBUGF("[KNX-UM] scheduleStatePublish() skipped - KNX not running (enabled=%d, running=%d)\n",
-                  enabled, KNX.running());
-    return;
-  }
-
-  // Smart change detection: only set pending flags for things that actually changed
-  bool curOn = (bri > 0);
-
-  // Get current CCT and RGBW values
-  const Segment& seg = strip.getSegment(0);
-  uint8_t curCct = seg.cct;
-  const uint32_t c = seg.colors[0];
-  uint8_t curR = R(c), curG = G(c), curB = B(c), curW = W(c);
-  uint8_t curPreset = currentPreset;
-
-  if (g_firstCall) {
-    // Initialize on first call
-    g_lastScheduleBri = bri;
-    g_lastScheduleOn = curOn;
-    g_lastScheduleFx = effectCurrent;
-    g_lastScheduleCct = curCct;
-    g_lastScheduleR = curR;
-    g_lastScheduleG = curG;
-    g_lastScheduleB = curB;
-    g_lastScheduleW = curW;
-    g_lastSchedulePreset = curPreset;
-    g_firstCall = false;
-  }
-
-  // Detect all changes
-  bool powerChanged = (g_lastScheduleOn != curOn);
-  bool briChanged = (g_lastScheduleBri != bri);
-  bool fxChanged = (g_lastScheduleFx != effectCurrent);
-  bool cctChanged = (g_lastScheduleCct != curCct);
-  bool rgbwChanged = (g_lastScheduleR != curR) || (g_lastScheduleG != curG) ||
-                     (g_lastScheduleB != curB) || (g_lastScheduleW != curW);
-  bool presetChanged = (g_lastSchedulePreset != curPreset);
-
-  // Set pending flags for changes
-  if (powerChanged) {
-    _pendingTxPower = true;
-    KNX_UM_DEBUGF("[KNX-UM] Power changed: %d→%d\n", g_lastScheduleOn, curOn);
-  }
-  if (briChanged) {
-    _pendingTxBri = true;
-    KNX_UM_DEBUGF("[KNX-UM] Brightness changed: %d→%d\n", g_lastScheduleBri, bri);
-  }
-  if (fxChanged) {
-    _pendingTxFx = true;
-    KNX_UM_DEBUGF("[KNX-UM] Effect changed: %d→%d\n", g_lastScheduleFx, effectCurrent);
-  }
-  if (cctChanged || rgbwChanged) {
-    _pendingTxColor = true;
-    KNX_UM_DEBUGF("[KNX-UM] Color/CCT changed: R:%d→%d G:%d→%d B:%d→%d W:%d→%d CCT:%d→%d\n",
-                  g_lastScheduleR, curR, g_lastScheduleG, curG, g_lastScheduleB, curB,
-                  g_lastScheduleW, curW, g_lastScheduleCct, curCct);
-  }
-  if (presetChanged) {
-    _lastPreset = curPreset;
-    _pendingTxPreset = true;
-    KNX_UM_DEBUGF("[KNX-UM] Preset changed: %d→%d\n", g_lastSchedulePreset, curPreset);
-  }
-
-  // Schedule if we have ANY changes (including CCT, RGBW, presets)
-  bool hasChanges = powerChanged || briChanged || fxChanged || _pendingTxColor || _pendingTxPreset;
-  if (hasChanges) {
-    // Only schedule if no publish is already pending
-    if (_nextTxAt == 0) {
-      unsigned long now = millis();
-      _nextTxAt = now + txRateLimitMs;
-      KNX_UM_DEBUGF("[KNX-UM] Scheduled publish in %dms (pwr=%d, bri=%d, fx=%d, cct=%d, rgbw=%d, preset=%d)\n",
-                    txRateLimitMs, powerChanged, briChanged, fxChanged, cctChanged, rgbwChanged, presetChanged);
-    } else {
-      KNX_UM_DEBUGF("[KNX-UM] Merge with existing schedule (pwr=%d, bri=%d, fx=%d, cct=%d, rgbw=%d, preset=%d)\n",
-                    powerChanged, briChanged, fxChanged, cctChanged, rgbwChanged, presetChanged);
-    }
-
-    // IMPORTANT: Only update last known state AFTER scheduling, not before
-    // This ensures repeated calls can still detect the same change until it's actually published
-    g_lastScheduleBri = bri;
-    g_lastScheduleOn = curOn;
-    g_lastScheduleFx = effectCurrent;
-    g_lastScheduleCct = curCct;
-    g_lastScheduleR = curR;
-    g_lastScheduleG = curG;
-    g_lastScheduleB = curB;
-    g_lastScheduleW = curW;
-    g_lastSchedulePreset = curPreset;
-  } else {
-    //KNX_UM_DEBUGF("[KNX-UM] No actual changes detected - skipping schedule\n");
-  }
-}
-
 void KnxIpUsermod::loop() {
   if (!enabled) return;
 
@@ -2946,17 +1995,8 @@ void KnxIpUsermod::loop() {
     }
   }
 
-  // Execute scheduled publishes (centralized publishing)
-  if (_nextTxAt && millis() >= _nextTxAt) {
-    _nextTxAt = 0;
-    KNX_UM_DEBUGLN("[KNX-UM] Scheduled publish triggered");
-    // Safety check before executing publish
-    if (KNX.running()) {
-      publishState(); // Execute the actual publish
-    } else {
-      KNX_UM_DEBUGLN("[KNX-UM] Scheduled publish skipped - KNX not running");
-    }
-  }
+  processPendingState();
+
 }
 
 void KnxIpUsermod::addToConfig(JsonObject& root) {
