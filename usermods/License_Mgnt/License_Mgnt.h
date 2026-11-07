@@ -63,7 +63,6 @@ private:
   void runPeriodicLicenseCheck();
   void warningEffectBeforeReboot();
   static void getDevKeyStatusString(const int8_t devKeyStatus, String& statusStr);
-  static String getStoredDeviceKey();
 
   inline uint8_t getTrialMinsLeft() const { return trialMinsLeft; }
   inline void setTrialMinsLeft(uint8_t mins) { trialMinsLeft = mins; }

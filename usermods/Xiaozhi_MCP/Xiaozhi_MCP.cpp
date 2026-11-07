@@ -171,7 +171,6 @@ bool Xiaozhi_MCP::checkMcpConfig() {
   }
 
   MCP_UM_DEBUGF("[MCP-UM] Mode Name: '%s'\n", getName());
-  MCP_UM_DEBUGF("[MCP-UM] MCP Endpoint: '%s'\n", mcpEndpoint.c_str());
   MCP_UM_DEBUGLN("[MCP-UM] MCP endpoint configured");
 
   return true;

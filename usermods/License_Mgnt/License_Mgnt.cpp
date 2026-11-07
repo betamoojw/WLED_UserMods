@@ -11,8 +11,6 @@ void License_Mgnt::setup() {
 
   if (0 == devKeyStatus) {
     LM_UM_DEBUGLN("[LM-UM] Device key validated successfully on setup");
-    String deviceKey = getStoredDeviceKey();
-    LM_UM_DEBUGF("[LM-UM] Device key retrieved from storage is %s\n", deviceKey.c_str());
   } else {
     LM_UM_DEBUGF("[LM-UM] Device key validation failed on setup (status=%d)\n", devKeyStatus);
   }
@@ -160,35 +158,6 @@ void License_Mgnt::getDevKeyStatusString(const int8_t devKeyStatus, String& stat
       LM_UM_DEBUGF("[LM-UM] Device key status unknown\n");
       break;
   }
-}
-
-String License_Mgnt::getStoredDeviceKey() {
-#define DEVICE_KEY_FILE "/DEVICE_KEY" // NOTE - device key file name
-#define DEV_KEY_DEBUG_NAME "DEV-KEY: "
-
-  // Retrieve the stored device key from persistent storage
-  String storedDeviceKey = "";
-
-  if (WLED_FS.exists(DEVICE_KEY_FILE)) {
-    LM_UM_DEBUGLN(DEV_KEY_DEBUG_NAME "Reading the device key file...");
-    File file = WLED_FS.open(DEVICE_KEY_FILE, "r");
-    if (file) {
-      size_t size = file.size();
-      char* buf = new char[size + 1];
-      file.readBytes(buf, size);
-      buf[size] = '\0';
-      storedDeviceKey = String(buf);
-      delete[] buf;
-      file.close();
-      LM_UM_DEBUGLN(DEV_KEY_DEBUG_NAME "Device key file read successfully.");
-    } else {
-      LM_UM_DEBUGLN(DEV_KEY_DEBUG_NAME "Failed to open device key file!");
-    }
-  } else {
-    LM_UM_DEBUGLN(DEV_KEY_DEBUG_NAME "Device key file not found.");
-  }
-
-  return storedDeviceKey;
 }
 
 const char License_Mgnt::_name[] PROGMEM = "License_Mgnt";

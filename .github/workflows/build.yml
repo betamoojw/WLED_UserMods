@@ -28,6 +28,8 @@ jobs:
           python-version: '3.12'
       - name: Compile and run production-path regressions
         run: python tools/test_knx_control.py
+      - name: Check credential handling and log privacy
+        run: python tools/test_usermod_security.py
 
   get_default_envs:
     name: Gather Environments

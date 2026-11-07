@@ -51,7 +51,7 @@ private:
   // --- Config values (editable via JSON/UI) ---
   bool isEnabled = false;
   String mcpTerminalAlias = "LED";
-  String mcpEndpoint = "wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjExODk4NCwiYWdlbnRJZCI6MTA5MDAsImVuZHBvaW50SWQiOiJhZ2VudF8xMDkwMCIsInB1cnBvc2UiOiJtY3AtZW5kcG9pbnQiLCJpYXQiOjE3NjgzMTM2NDMsImV4cCI6MTc5OTg3MTI0M30.Rf1Wg030527sX6DGzDzVdP52cOjYOMN67QN1iKU5fAaT3DTbAv3idzxDhn1IV5ecN45HxaXM1JdMDxZc4elkKA"; // Adjust as needed
+  String mcpEndpoint; // Configure per device; never ship a shared endpoint credential.
 
   bool isSetupDone = false;
   unsigned long lastTime = 0;
