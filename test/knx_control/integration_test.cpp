@@ -26,6 +26,7 @@ void KnxIpUsermod::loop() {}
 void KnxIpUsermod::addToConfig(JsonObject&) {}
 bool KnxIpUsermod::readFromConfig(JsonObject&) { return true; }
 void KnxIpUsermod::addToJsonInfo(JsonObject&) {}
+void KnxIpUsermod::addToJsonState(JsonObject&) {}
 void KnxIpUsermod::appendConfigData(Print&) {}
 void KnxIpUsermod::publishTemperatureIfChanged() {}
 bool KnxIpCore::_sendSearchResponse(bool, const uint8_t*, int) { return false; }

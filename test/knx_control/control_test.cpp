@@ -23,6 +23,7 @@ void KnxIpUsermod::loop() {}
 void KnxIpUsermod::addToConfig(JsonObject&) {}
 bool KnxIpUsermod::readFromConfig(JsonObject&) { return true; }
 void KnxIpUsermod::addToJsonInfo(JsonObject&) {}
+void KnxIpUsermod::addToJsonState(JsonObject&) {}
 void KnxIpUsermod::appendConfigData(Print&) {}
 void KnxIpUsermod::scheduleStatePublish() { ++publishes; }
 
