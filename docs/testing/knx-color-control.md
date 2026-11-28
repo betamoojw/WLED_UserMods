@@ -71,8 +71,9 @@ python tools/test_knx_control.py
 python tools/test_knx_control.py --examples
 ```
 
-The default command runs both suites. `--unit-only` and `--integration` run one
-suite. `CXX` defaults to `c++`; a quoted compiler path or `path/to/zig.exe c++`
+The default command runs the command, KNX integration and digital Bus suites.
+`--unit-only` runs the command suite; `--integration` runs the latter two.
+`CXX` defaults to `c++`; a quoted compiler path or `path/to/zig.exe c++`
 is also accepted. The runner enables warnings as errors and uses temporary
 executables. Local validation used Zig 0.13.0, installed only in ignored
 `docs/temp/`; no new firmware dependency was added.
@@ -187,6 +188,43 @@ Changes that a commissioning engineer should observe:
 No license, MCP, partition, `platformio.ini`, or generated web-header change is
 included. Actual UDP delivery, rendering, transitions on the target, reboot/settings
 round-trip and deployed KNX interoperability still require device acceptance.
+
+## Bus-layer Gamma and ABL follow-up
+
+The upstream changes `57d6788a` and `5e852a84` leave the central KNX objects
+logical. DPT 5.001 reads the global target `bri`, rounded through whole percent;
+relative steps start from that target, not the current transition brightness.
+RGB/RGBW are the main segment's primary color. CCT is the configured Kelvin
+mapping of the segment CCT byte, and WW/CW are the truncated linear proportions
+of its stored W. These are not measurements and do not incorporate Auto White,
+CCT Blend, brightness scaling, Gamma or ABL.
+
+The digital Bus fixture uses the production Gamma table, Bus current estimation,
+ABL scheduling, channel mapping and pixel encoder with an in-memory output. It
+checks negative, zero and additive CCT Blend, default WWA (CW/WW/WW), an overridden
+WWA channel map, and global versus per-output limits with three digital outputs.
+The separate KNX packet fixture checks logical feedback during a transition and
+verifies that unchanged logical channels stay quiet. Neither fixture drives GPIO
+or sends a real KNX packet.
+
+With a custom channel map, the WWA type does not necessarily drive CW/WW/WW.
+The upstream fixed-map assumption can miss an active channel entirely (for
+example red on a WWA-type bus with an RGB map). ABL now estimates custom layouts
+from their resolved encoder map, counting repeated sources and excluding unused
+slots. Default WWA, the other default layouts, and the WS2815 current model are
+unchanged by this follow-up.
+
+When testing per-output ABL, set a nonzero LED current and a sufficient local
+limit for a bus that should remain bright. A zero local limit is not equivalent
+to a zero LED current when another output enables per-output ABL. This behavior
+predates both upstream changes.
+
+For device acceptance, compare KNX payloads with target state while measuring
+digital output or PWM duty separately. Check low-end fades and CCT endpoints
+and midpoint, including 2-channel and 5-channel PWM. On digital RGB+CCT and WWA,
+test both per-output and shared current limits, including a zero-current exempt
+output. Also verify 16-bit digital outputs and custom layouts as deployed. ABL
+estimates current; its UI value does not replace a current measurement.
 
 ## Firmware compilation confirmation and reproduction
 

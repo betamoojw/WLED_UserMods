@@ -222,6 +222,38 @@ static void testCoreCompatibility() {
         strip.segments[1].colors[0]==RGBW32(11,12,13,14),"legacy colorUpdated still applies to all selected segments");
 }
 
+// Exercise the logical contract with a transition still in flight and stale rendered pixels.
+static void testLogicalLightingFeedback() {
+  reset(); KnxIpUsermod m; configure(m);
+  m.GA_IN_BRI = 0x0802;
+  registerScalingHandler(m.GA_IN_BRI, [&](uint8_t pct) { m.onKnxBrightness(pct); });
+  m.GA_OUT_CCT = 0x1105; m.GA_OUT_WW = 0x1106; m.GA_OUT_CW = 0x1107;
+  m.kelvinMin = 2700; m.kelvinMax = 6500;
+  m.colorOutMode = 2;
+  strip.transition = 1000;
+  prime(m);
+
+  receive(m.GA_IN_BRI,{127}); flush(m);
+  check(bri == 128 && briT16 == (100u << 8) && payload(m.GA_OUT_BRI,{128}),
+        "absolute DPT 5.001 acknowledges the rounded target, not the in-flight strip brightness");
+  sentDatagrams.clear(); receive(m.GA_IN_BRI_REL,{15},true); flush(m);
+  check(bri == 131 && payload(m.GA_OUT_BRI,{130}), "relative dimming steps from the logical target");
+
+  sentDatagrams.clear(); receive(m.GA_IN_RGBW,{120,80,40,255,0,0}); m.onKnxCct(4600); flush(m);
+  check(payload(m.GA_OUT_RGB,{120,80,40}) && payload(m.GA_OUT_RGBW,{120,80,40,255,0,0}),
+        "RGB and RGBW report the main segment, not rendered pixel bytes");
+  check(payload(m.GA_OUT_CCT,{0x11,0xFF}) && payload(m.GA_OUT_WW,{127}) && payload(m.GA_OUT_CW,{128}),
+        "CCT reports configured Kelvin while WW and CW report the logical linear split");
+  check(!packet(m.GA_OUT_BRI), "white/CCT changes do not republish brightness");
+
+  sentDatagrams.clear(); m.onKnxWW(64); flush(m);
+  check(payload(m.GA_OUT_WW,{64}) && !packet(m.GA_OUT_CW) && payload(m.GA_OUT_RGBW,{120,80,40,192,0,0}),
+        "absolute WW recombines W+CCT while retaining the unchanged logical CW");
+  sentDatagrams.clear(); m.onKnxCW(32); flush(m);
+  check(payload(m.GA_OUT_CW,{32}) && !packet(m.GA_OUT_WW) && payload(m.GA_OUT_RGBW,{120,80,40,96,0,0}),
+        "absolute CW recombines W+CCT while retaining the unchanged logical WW");
+}
+
 static void testFeedbackAndGuards() {
   reset(); KnxIpUsermod m; configure(m); prime(m);
   receive(m.GA_IN_BRI_REL,{15},true); flush(m);
@@ -256,7 +288,7 @@ static void testFeedbackAndGuards() {
 
 int main() {
   testColorPersistence(); testOutputModes(); testMainSegment(); testEnhancedDimming(); testCoalescingAndStops();
-  testCoreCompatibility(); testFeedbackAndGuards();
+  testCoreCompatibility(); testLogicalLightingFeedback(); testFeedbackAndGuards();
   std::printf("KNX/WLED production integration: %u checks, %u failures\n",checks,failures);
   return failures?1:0;
 }

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <string>
 using byte = uint8_t;
+using boolean = bool;
 using String = std::string;
 inline uint32_t testMillis = 1000;
 inline uint32_t millis() { return testMillis; }
